@@ -1,0 +1,17 @@
+Django
+django-cors-headers
+django-environ
+django-filter
+djangorestframework
+djangorestframework-simplejwt
+drf-yasg
+Faker
+mysqlclient
+Pillow
+PyJWT
+psycopg2
+psycopg2-binary
+python3-openid
+requests
+setuptools
+typing_extensions
