@@ -1,4 +1,4 @@
-menv/
+venv/
 memis-3f5db-firebase-adminsdk-hcar7-70e243377d.json
 django_errors.log
 .env
