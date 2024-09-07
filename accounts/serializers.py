@@ -84,6 +84,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
         password = validated_data.pop('password')
+        
+         # If user_type is not set and the request user is a superadmin, default to admin
+        if 'user_type' not in validated_data and self.context['request'].user.user_type == 1:
+            validated_data['user_type'] = 2  # Default to Admin (user_type=2) for superadmins if not provided
 
         try:
             # Create the user
