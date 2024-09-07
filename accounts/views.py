@@ -78,43 +78,7 @@ class UserRegistrationView(views.APIView):
                 return Response({"error": "An unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    
-   
-class GoogleAuthView(views.APIView):
-    permission_classes = [permissions.AllowAny]
 
-    @swagger_auto_schema(
-        operation_summary="Authenticate via Google OAuth2",
-        request_body=GoogleAuthSerializer,
-        responses={200: UserSerializer, 400: "Bad Request"}
-    )
-    def post(self, request, *args, **kwargs):
-        serializer = GoogleAuthSerializer(data=request.data)
-        if serializer.is_valid():
-            id_token = serializer.validated_data.get('id_token')
-            firebase_auth = FirebaseAuthentication()
-            decoded_token, error = firebase_auth.authenticate_token(id_token)
-
-            if not decoded_token:
-                logger.error(f'Authentication failed: {error}')
-                return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
-
-            user, error = UserManager.handle_user(decoded_token)
-            if user:
-                # Generate JWT tokens
-                refresh = RefreshToken.for_user(user)
-                access = refresh.access_token
-                logger.info(f'User authenticated: {user.email}')
-                return Response({
-                    'user': UserSerializer(user).data,
-                    'refresh': str(refresh),
-                    'access': str(access)
-                }, status=status.HTTP_200_OK)
-            else:
-                logger.error(f'User management error: {error}')
-                return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
-        logger.error(f'Invalid data: {serializer.errors}')
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
 

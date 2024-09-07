@@ -36,20 +36,6 @@ DEBUG = env('DEBUG', default=False)
 
 ALLOWED_HOSTS = ['*']
 
-# Firebase configuration
-FIREBASE_CREDENTIALS = {
-    "type": env('FIREBASE_TYPE'),
-    "project_id": env('FIREBASE_PROJECT_ID'),
-    "private_key_id": env('FIREBASE_PRIVATE_KEY_ID'),
-    "private_key": env('FIREBASE_PRIVATE_KEY').replace('\\n', '\n'),
-    "client_email": env('FIREBASE_CLIENT_EMAIL'),
-    "client_id": env('FIREBASE_CLIENT_ID'),
-    "auth_uri": env('FIREBASE_AUTH_URI'),
-    "token_uri": env('FIREBASE_TOKEN_URI'),
-    "auth_provider_x509_cert_url": env('FIREBASE_AUTH_PROVIDER_CERT_URL'),
-    "client_x509_cert_url": env('FIREBASE_CLIENT_CERT_URL'),
-    "universe_domain": env('FIREBASE_UNIVERSE_DOMAIN')
-}
 
 # Load email configuration from .env
 EMAIL_BACKEND = env('EMAIL_BACKEND')
@@ -98,7 +84,6 @@ MIDDLEWARE = [
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-        'accounts.authentication.firebase_authentication.FirebaseAuthentication',
     ],
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
@@ -160,17 +145,9 @@ LOGGING = {
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
-"""
+
 DATABASES = {
     'default': env.db(),  # Use env.db() to parse the DATABASE_URL environment variable
-}
-
-"""
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
 }
 
 

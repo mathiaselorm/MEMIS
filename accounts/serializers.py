@@ -114,13 +114,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
         return user
 
-    
-class GoogleAuthSerializer(serializers.Serializer):
-    """
-    Serializer for Google OAuth2 authentication.
-    """
-    id_token = serializers.CharField(write_only=True, required=True)
-
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod

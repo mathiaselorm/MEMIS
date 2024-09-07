@@ -8,10 +8,7 @@ from rest_framework_simplejwt.views import (
 urlpatterns = [
     # Registration endpoint for new users. This view handles user creation 
     path('register/', views.UserRegistrationView.as_view(), name='register'),
-    
-    #API endpoint for authenticating via Google OAuth2 using Firebase.
-    path('auth/google/', views.GoogleAuthView.as_view(), name='google_auth'),    
-  
+      
     
     # Endpoint for retrieving or updating user details. 
     # Superusers and Admins can update user profiles, except for passwords and superuser status.
