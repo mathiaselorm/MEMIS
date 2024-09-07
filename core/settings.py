@@ -51,6 +51,16 @@ FIREBASE_CREDENTIALS = {
     "universe_domain": env('FIREBASE_UNIVERSE_DOMAIN')
 }
 
+# Load email configuration from .env
+EMAIL_BACKEND = env('EMAIL_BACKEND')
+EMAIL_HOST = env('EMAIL_HOST')
+EMAIL_PORT = env.int('EMAIL_PORT', default=587)
+EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
+EMAIL_HOST_USER = env('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL')
+
+
 
 # Application definition
 
@@ -66,8 +76,6 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'drf_yasg',
-    
-    #installed apps
     'accounts',
     'assets',
     'inventory'
@@ -152,6 +160,12 @@ LOGGING = {
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
+"""
+DATABASES = {
+    'default': env.db(),  # Use env.db() to parse the DATABASE_URL environment variable
+}
+
+"""
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',

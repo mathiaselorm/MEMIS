@@ -7,41 +7,36 @@ from rest_framework_simplejwt.views import (
 
 urlpatterns = [
     # Registration endpoint for new users. This view handles user creation 
-    # and initial setup, including password setting.
     path('register/', views.UserRegistrationView.as_view(), name='register'),
     
-    #path('login/token/', views.CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('auth/google/', views.GoogleAuthView.as_view(), name='google_auth'),
-    path('auth/apple/', views.AppleAuthView.as_view(), name='apple_auth'),
+    #API endpoint for authenticating via Google OAuth2 using Firebase.
+    path('auth/google/', views.GoogleAuthView.as_view(), name='google_auth'),    
+  
     
-    # Login endpoint for existing users. This view authenticates a user and returns a JWT token
-    # for subsequent authenticated requests.
-    #path('login/', views.LoginView.as_view(), name='login'),
-    
-    # Endpoint for retrieving or updating user details. Access is restricted to authenticated users.
-    # Users can only access their own user details unless additional permissions are configured.
+    # Endpoint for retrieving or updating user details. 
+    # Superusers and Admins can update user profiles, except for passwords and superuser status.
+    # Regular users are restricted from editing their profiles.
     path('user/<int:pk>/', views.UserDetailView.as_view(), name='user-detail'),
     
-    # Endpoint for retrieving or updating the profile associated with the authenticated user.
-    # This view ensures that users can manage their personal information such as biography and birth date.
-    path('user/profile/', views.UserProfileView.as_view(), name='user-profile'),
+    # API endpoint for authenticated users (regular, Admin, or SuperAdmin) to change their own password.
+    path('password/change/', views.PasswordChangeView.as_view(), name='password-change'),
     
-    # Endpoint for users to request a password reset. This typically involves sending an email
-    # with a password reset link or token.
+    # API endpoint for requesting a password reset email.
     path('password/reset/', views.PasswordResetRequestView.as_view(), name='password-reset-request'),
     
-    # Endpoint for users to confirm their password reset. This is where the actual password change
-    # occurs, assuming a valid reset token is provided.
-    path('password/reset/confirm/', views.PasswordResetView.as_view(), name='password-reset-confirm'),
+    # API endpoint for resetting the password using the token sent via email.
+    path('password-reset/<uidb64>/<token>/', views.PasswordResetView.as_view(), name='password_reset_confirm'),
     
-    # Administrative endpoint to view a list of all users. Depending on the application's security
-    # setup, access might be restricted to admin users.
+    # API endpoint for listing users.
+    # Superusers can see all users.
+    #Admins can only see regular users (user_type=3).
+    #Regular users have no access to this endpoint.
     path('users/', views.UserListView.as_view(), name='user-list'),
     
-    # Endpoint to retrieve the total number of users registered in the system. This might be used
-    # for reporting or administrative purposes.
+    # Endpoint to retrieve the total number of users registered in the system. 
     path('users/total/', views.total_users_view, name='total-users'),
     
+     #API endpoint for obtaining JWT tokens (access and refresh) with custom claims.
     path('login/token/', views.CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('login/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('login/token/verify/', TokenVerifyView.as_view(), name='token_verify'),

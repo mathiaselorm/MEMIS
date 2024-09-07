@@ -1,11 +1,18 @@
 import logging
-from django.db import transaction
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
-from .models import UserProfile
 from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+
+from django.core.mail import send_mail
+from django.urls import reverse
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
+from django.template.loader import render_to_string
+from django.contrib.auth.tokens import default_token_generator
+from django.conf import settings
 
 
 logger = logging.getLogger(__name__)
@@ -17,16 +24,20 @@ class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the user model.
     """
+    user_type = serializers.SerializerMethodField()
     class Meta:
         model = User
-        fields = ('first_name', 'last_name', 'email', 'phone_number', 'date_joined', 'last_login')
-        read_only_fields = ('date_joined', 'last_login')
+        fields = ('first_name', 'last_name', 'email', 'phone_number', 'date_joined', 'last_login', 'user_type')
+        read_only_fields = ('date_joined', 'last_login', 'user_type')
         extra_kwargs = {
             'first_name': {'label': _("First Name")},
             'last_name': {'label': _("Last Name")},
             'phone_number': {'label': _("Phone Number")},
         }
 
+    def get_user_type(self, obj):
+        return obj.get_user_type_display()
+    
     def update(self, instance, validated_data):
         instance.first_name = validated_data.get('first_name', instance.first_name)
         instance.last_name = validated_data.get('last_name', instance.last_name)
@@ -34,28 +45,6 @@ class UserSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
-class UserProfileSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the user profile model, handling nested updates.
-    """
-    user = UserSerializer(read_only=False)
-
-    class Meta:
-        model = UserProfile
-        fields = ('user', 'bio', 'birth_date')
-
-    @transaction.atomic
-    def update(self, instance, validated_data):
-        user_data = validated_data.pop('user', {})
-        user_serializer = self.fields['user']
-        user_serializer.update(instance.user, user_data)
-
-        # UserProfile instance update
-        instance.bio = validated_data.get('bio', instance.bio)
-        instance.birth_date = validated_data.get('birth_date', instance.birth_date)
-        instance.save()
-        return instance
-    
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """
@@ -83,20 +72,46 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if not any(char.isalpha() for char in data['password']):
             raise serializers.ValidationError({"password": _("The password must include at least one letter.")})
 
+        # Restrict Admins from creating other Admins
+        if self.context['request'].user.user_type == 2:  # Admin user trying to create another user
+            if data.get('user_type') == 2:  # Trying to create another Admin
+                raise serializers.ValidationError({"user_type": _("Admins cannot create other Admin accounts.")})
+            # If user_type is not provided, default it to Technician for Admin users
+            data['user_type'] = 3  # Default to Technician (user_type=3) if created by Admin
+
         return data
 
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
         password = validated_data.pop('password')
+
         try:
+            # Create the user
             user = User.objects.create_user(password=password, **validated_data)
             logger.info(f"User created successfully: {user.email}")
+
+            # Send email to the newly created user to set/change their password
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+            reset_url = self.context['request'].build_absolute_uri(
+                reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
+            )
+
+            # Send email with password setup link
+            subject = 'Set Your Password'
+            message = render_to_string('accounts/account_creation_email.html', {
+                'user': user,
+                'reset_url': reset_url,
+            })
+            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
+
         except ValidationError as e:
             logger.error(f"User creation failed: {e}")
             raise serializers.ValidationError({"user": _("User could not be created. Please ensure all fields are correct.")})
         except Exception as e:
             logger.error(f"Unexpected error during user creation: {e}")
             raise serializers.ValidationError({"user": _("An unexpected error occurred. Please try again.")})
+
         return user
 
     
@@ -106,11 +121,6 @@ class GoogleAuthSerializer(serializers.Serializer):
     """
     id_token = serializers.CharField(write_only=True, required=True)
 
-class AppleAuthSerializer(serializers.Serializer):
-    """
-    Serializer for Apple OAuth2 authentication.
-    """
-    identity_token = serializers.CharField(write_only=True, required=True)
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
@@ -171,13 +181,3 @@ class PasswordResetSerializer(serializers.Serializer):
         return data
 
  
-"""
-class LoginSerializer(serializers.Serializer):
-    email = serializers.EmailField(label=_("Email"))
-    password = serializers.CharField(label=_("Password"), style={'input_type': 'password'}, write_only=True)
-
-    def validate_email(self, value):
-        if not User.objects.filter(email=value).exists():
-            raise serializers.ValidationError(_("User with this email does not exist."))
-        return value
-"""  

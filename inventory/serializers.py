@@ -77,12 +77,19 @@ class SupplierSerializer(serializers.ModelSerializer):
         """
         items = obj.items.all()  # Get all items related to the supplier
         paginator = PageNumberPagination()
-        page = paginator.paginate_queryset(items, self.context['request'])
-
-        # Serialize the paginated items
-        serializer = ItemMinimalSerializer(page, many=True, context={'request': self.context['request']})
         
-        return serializer.data  # Return items directly as a list
+        # Safely access 'request' from context and paginate items
+        request = self.context.get('request')
+        
+        if request:
+            page = paginator.paginate_queryset(items, request)
+            
+            # Serialize the paginated items
+            serializer = ItemMinimalSerializer(page, many=True, context={'request': request})
+            
+            return serializer.data  # Return items directly as a list
+
+        return []  # Return an empty list if 'request' is not in contextt
 
     def get_history(self, obj):
         """
