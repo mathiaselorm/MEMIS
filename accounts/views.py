@@ -1,21 +1,15 @@
 
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import get_user_model
 from rest_framework import generics, status, views, permissions
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import ListAPIView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
 from drf_yasg.utils import swagger_auto_schema
 from django.template import TemplateDoesNotExist
 from django.conf import settings
-from drf_yasg import openapi
 from rest_framework_simplejwt.tokens import RefreshToken
-import firebase_admin
-from firebase_admin import auth as firebase_auth
-from accounts.authentication.firebase_authentication import FirebaseAuthentication
-from .utils import UserManager
 from .serializers import *
 
 
