@@ -10,6 +10,8 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+
+
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -18,9 +20,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
-import dj_database_url
 import os
 import environ
+
 
 # Initialise environment variables
 env = environ.Env()
@@ -37,15 +39,25 @@ DEBUG = env('DEBUG', default=False)
 ALLOWED_HOSTS = ['*']
 
 
-# Load email configuration from .env
-EMAIL_BACKEND = env('EMAIL_BACKEND')
-EMAIL_HOST = env('EMAIL_HOST')
-EMAIL_PORT = env.int('EMAIL_PORT', default=587)
-EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
-EMAIL_HOST_USER = env('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD')
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL')
+EMAIL_BACKEND = 'accounts.utils.MailgunAPIBackend'
 
+# Mailgun API configuration
+MAILGUN_API_KEY = env('MAILGUN_API_KEY')
+MAILGUN_DOMAIN = env('MAILGUN_DOMAIN')
+
+# Default email settings
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='memis@melarc.me')
+
+
+# Backgroud_task settings
+BACKGROUND_TASK_RUN_ASYNC = True
+BACKGROUND_TASK_MAX_ATTEMPTS = 3
+BACKGROUND_TASK_EXPIRED = 60 * 60 * 24   # Tasks will expire after 24 hours if they are not completed (measured in seconds)
+BACKGROUND_TASK_RETRY_INTERVAL = [50, 300, 600] # Retry intervals in seconds: 1 minute, 5 minutes, 10 minutes between retries
+BACKGROUND_TASK_COMPLETE_EXPIRED = 60 * 60 * 24  # Completed tasks expire after 24 hours
+
+
+PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 
 
 # Application definition
@@ -57,6 +69,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'background_task',
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
@@ -101,7 +114,7 @@ CORS_ALLOW_ALL_ORIGINS = True
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -137,6 +150,13 @@ LOGGING = {
         '': {  # This configures the root logger
             'handlers': ['file'],
             'level': 'ERROR',
+            'propagate': True,
+        },
+    },
+    'loggers': {
+        'background_task': {
+            'handlers': ['file'],
+            'level': 'DEBUG',
             'propagate': True,
         },
     },

@@ -34,6 +34,20 @@ class CustomUserAdmin(BaseUserAdmin):
     search_fields = ('email', 'first_name', 'last_name', 'phone_number')
     ordering = ('email',)
     readonly_fields = ('last_login', 'date_joined')
+    
+     # Enable the "delete selected users" action
+    actions = ['delete_selected']
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        # Ensure delete action is enabled
+        if 'delete_selected' not in actions:
+            actions['delete_selected'] = (self.delete_selected, 'delete_selected', _('Delete selected users'))
+        return actions
+
+    def delete_selected(self, request, queryset):
+        """Custom logic if you want to do something extra before deletion"""
+        queryset.delete()
 
 
 # Register the CustomUser model with the custom admin interface

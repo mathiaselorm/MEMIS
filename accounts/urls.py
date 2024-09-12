@@ -15,6 +15,10 @@ urlpatterns = [
     # Regular users are restricted from editing their profiles.
     path('user/<int:pk>/', views.UserDetailView.as_view(), name='user-detail'),
     
+    # Endpoint for changing the user type of a user.
+    path('user/<int:pk>/update-role/', views.UpdateUserRoleView.as_view(), name='update_user_role'),
+
+    
     # API endpoint for authenticated users (regular, Admin, or SuperAdmin) to change their own password.
     path('password/change/', views.PasswordChangeView.as_view(), name='password-change'),
     

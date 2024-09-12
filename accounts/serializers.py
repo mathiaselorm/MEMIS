@@ -4,13 +4,13 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from django.core.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from .tasks import send_welcome_email
+import traceback
 
 
-from django.core.mail import send_mail
 from django.urls import reverse
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
-from django.template.loader import render_to_string
 from django.contrib.auth.tokens import default_token_generator
 from django.conf import settings
 
@@ -39,10 +39,12 @@ class UserSerializer(serializers.ModelSerializer):
         return obj.get_user_type_display()
     
     def update(self, instance, validated_data):
+        validated_data.pop('email', None)  # Prevent email from being updated
         instance.first_name = validated_data.get('first_name', instance.first_name)
         instance.last_name = validated_data.get('last_name', instance.last_name)
         instance.phone_number = validated_data.get('phone_number', instance.phone_number)
         instance.save()
+        logger.info(f"User {instance.email} updated their profile successfully.")
         return instance
 
 
@@ -54,7 +56,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('first_name', 'last_name', 'email', 'phone_number', 'password', 'password_confirm')
+        fields = ('first_name', 'last_name', 'email', 'phone_number', 'password', 'password_confirm', 'user_type')
         extra_kwargs = {
             'password': {'write_only': True, 'label': _("Password")},
         }
@@ -64,7 +66,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if data['password'] != data['password_confirm']:
             raise serializers.ValidationError({"password": _("Password fields didn't match.")})
 
-        # Enhanced password strength validation
+        # Password strength validation
         if len(data['password']) < 8:
             raise serializers.ValidationError({"password": _("Password must be at least 8 characters long.")})
         if not any(char.isdigit() for char in data['password']):
@@ -72,51 +74,55 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if not any(char.isalpha() for char in data['password']):
             raise serializers.ValidationError({"password": _("The password must include at least one letter.")})
 
-        # Restrict Admins from creating other Admins
-        if self.context['request'].user.user_type == 2:  # Admin user trying to create another user
-            if data.get('user_type') == 2:  # Trying to create another Admin
+        # Role-based validation
+        request_user = self.context['request'].user
+        
+        # Superuser can create any account type
+        if request_user.user_type == User.UserType.SUPERADMIN:
+            return data
+
+        # Admin can only create Technician accounts
+        if request_user.user_type == User.UserType.ADMIN:  # Admin user
+            if data.get('user_type') == User.UserType.ADMIN:
                 raise serializers.ValidationError({"user_type": _("Admins cannot create other Admin accounts.")})
-            # If user_type is not provided, default it to Technician for Admin users
-            data['user_type'] = 3  # Default to Technician (user_type=3) if created by Admin
+             # Default to Technician if Admin is creating the account
+            data['user_type'] = User.UserType.TECHNICIAN  # Admin can only create Technician accounts
+
+        if request_user.user_type == User.UserType.TECHNICIAN:  # Technicians cannot create any accounts
+            raise serializers.ValidationError({"user_type": _("Technicians cannot create any accounts.")})
 
         return data
 
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
         password = validated_data.pop('password')
-        
-         # If user_type is not set and the request user is a superadmin, default to admin
-        if 'user_type' not in validated_data and self.context['request'].user.user_type == 1:
-            validated_data['user_type'] = 2  # Default to Admin (user_type=2) for superadmins if not provided
 
         try:
             # Create the user
             user = User.objects.create_user(password=password, **validated_data)
             logger.info(f"User created successfully: {user.email}")
 
-            # Send email to the newly created user to set/change their password
+             # Send email to the newly created user to set/change their password
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             reset_url = self.context['request'].build_absolute_uri(
                 reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
             )
 
-            # Send email with password setup link
-            subject = 'Set Your Password'
-            message = render_to_string('accounts/account_creation_email.html', {
-                'user': user,
-                'reset_url': reset_url,
-            })
-            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
-
+            # Trigger email to set up the password
+            send_welcome_email(user.email, user.pk, reset_url)
+            
         except ValidationError as e:
-            logger.error(f"User creation failed: {e}")
+            logger.error(f"User creation failed due to validation error: {e}")
             raise serializers.ValidationError({"user": _("User could not be created. Please ensure all fields are correct.")})
+        
         except Exception as e:
-            logger.error(f"Unexpected error during user creation: {e}")
-            raise serializers.ValidationError({"user": _("An unexpected error occurred. Please try again.")})
+            # Log the full traceback for debugging
+            logger.error(f"Unexpected error during user creation: {traceback.format_exc()}")
+            raise serializers.ValidationError({"error": "An unexpected error occurred. Please try again."})
 
         return user
+
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -127,6 +133,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['email'] = user.email
         token['first_name'] = user.first_name
         token['last_name'] = user.last_name
+        token['user_type'] = user.user_type 
+
         return token
 
     def validate(self, attrs):
@@ -153,7 +161,7 @@ class PasswordResetRequestSerializer(serializers.Serializer):
     def validate_email(self, value):
         if not User.objects.filter(email=value).exists():
             logger.error(f"Password reset requested for non-existent email: {value}")
-            raise serializers.ValidationError(_("No user is associated with this email address."))
+            raise serializers.ValidationError(_("If an account exists with this email, you will receive a password reset link."))
         return value
 
 class PasswordResetSerializer(serializers.Serializer):

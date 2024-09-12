@@ -8,18 +8,18 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
 from django.template import TemplateDoesNotExist
-from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import *
+from .tasks import send_password_reset_email
 
 
-from django.core.mail import send_mail
-from django.urls import reverse
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
-from django.template.loader import render_to_string
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_decode
+import logging
+
+
 
 
 
@@ -73,7 +73,28 @@ class UserRegistrationView(views.APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-    
+class UpdateUserRoleView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def patch(self, request, *args, **kwargs):
+        user = User.objects.get(id=kwargs['pk'])
+        new_user_type = request.data.get('user_type')
+
+        # Validate new user type is within defined choices
+        if new_user_type not in [choice[0] for choice in User.UserType.choices]:
+            return Response({"error": "Invalid user type provided."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if request.user.user_type == User.UserType.ADMIN and new_user_type == User.UserType.ADMIN:
+            return Response({"error": "Admins cannot change other accounts to Admin."}, status=status.HTTP_403_FORBIDDEN)
+        
+        if request.user.user_type == User.UserType.TECHNICIAN:
+            return Response({"error": "Technicians cannot change user roles."}, status=status.HTTP_403_FORBIDDEN)
+
+        user.user_type = new_user_type
+        user.save()
+
+        return Response({"message": "User type updated successfully."}, status=status.HTTP_200_OK)
+
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -193,16 +214,12 @@ class PasswordResetRequestView(views.APIView):
                 uid = urlsafe_base64_encode(force_bytes(user.pk))
 
                 # Construct the password reset URL
-                reset_url = request.build_absolute_uri(reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token}))
-
-                # Send email
-                subject = 'Password Reset Request'
-                message = render_to_string('password_reset_email.html', {
-                    'user': user,
-                    'reset_url': reset_url,
-                })
-                send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
-
+                reset_url = request.build_absolute_uri(  # Use `request` instead of `self.context['request']`
+                    reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
+                )
+            
+                # Offload email sending to the background task
+                send_password_reset_email(user.id, reset_url)
                 return Response({"message": "Password reset email sent."}, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -268,3 +285,13 @@ def total_users_view(request):
     total_users = User.objects.count()
     return Response({"total_users": total_users})
 
+
+"""
+    from django.core.mail import send_mail
+    from django.urls import reverse
+    from django.utils.http import urlsafe_base64_encode
+    from django.utils.encoding import force_bytes
+    from django.template.loader import render_to_string
+    from django.contrib.auth.tokens import default_token_generator
+    from django.utils.http import urlsafe_base64_decode
+"""
