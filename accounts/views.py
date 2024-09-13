@@ -213,13 +213,14 @@ class PasswordResetRequestView(views.APIView):
                 token = default_token_generator.make_token(user)
                 uid = urlsafe_base64_encode(force_bytes(user.pk))
 
-                # Construct the password reset URL
-                reset_url = request.build_absolute_uri(  # Use `request` instead of `self.context['request']`
-                    reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
-                )
+                 # Manually construct the password reset URL using the domain from settings
+                base_url = settings.PRODUCTION_DOMAIN  # Using the domain from settings
+                reset_url = f"{base_url}{reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})}"
             
                 # Offload email sending to the background task
                 send_password_reset_email(user.id, reset_url)
+                logger.info(f"Password reset email sent to {user.email}")
+                
                 return Response({"message": "Password reset email sent."}, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

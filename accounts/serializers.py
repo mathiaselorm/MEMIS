@@ -1,4 +1,5 @@
 import logging
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
@@ -96,6 +97,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
         password = validated_data.pop('password')
+        
+        base_url = settings.PRODUCTION_DOMAIN
 
         try:
             # Create the user
@@ -105,12 +108,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
              # Send email to the newly created user to set/change their password
             token = default_token_generator.make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
-            reset_url = self.context['request'].build_absolute_uri(
-                reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
-            )
+            reset_url = f"{base_url}{reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})}"
 
             # Trigger email to set up the password
             send_welcome_email(user.email, user.pk, reset_url)
+            logger.info(f"Password reset email sent to {user.email}")
             
         except ValidationError as e:
             logger.error(f"User creation failed due to validation error: {e}")

@@ -59,6 +59,7 @@ BACKGROUND_TASK_COMPLETE_EXPIRED = 60 * 60 * 24  # Completed tasks expire after 
 
 PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 
+PRODUCTION_DOMAIN = 'https://memis-90605b282646.herokuapp.com' # for generating a production base url for password reset
 
 # Application definition
 
