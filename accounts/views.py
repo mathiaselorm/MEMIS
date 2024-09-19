@@ -6,11 +6,12 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import ListAPIView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from .permissions import IsAdminUser
 from drf_yasg.utils import swagger_auto_schema
 from django.template import TemplateDoesNotExist
 from rest_framework_simplejwt.tokens import RefreshToken
 from .serializers import *
-from .tasks import send_password_reset_email
+from .tasks import *
 
 
 from django.contrib.auth.tokens import default_token_generator
@@ -22,10 +23,8 @@ import logging
 
 
 
-
-
-
 User = get_user_model()
+
 logger = logging.getLogger(__name__)
 
 class UserRegistrationView(views.APIView):
@@ -34,7 +33,7 @@ class UserRegistrationView(views.APIView):
     Superusers can create Admins and Users.
     Admins can only create regular Users.
     """
-    permission_classes = [permissions.IsAuthenticated]  # Ensure only authenticated users can create accounts
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]  # Only Admins and Superusers can access
 
     @swagger_auto_schema(
         operation_summary="Register a new user",
@@ -74,7 +73,7 @@ class UserRegistrationView(views.APIView):
 
 
 class UpdateUserRoleView(views.APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]  # Only Admins and Superusers can access
 
     def patch(self, request, *args, **kwargs):
         user = User.objects.get(id=kwargs['pk'])
@@ -120,7 +119,7 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
 
     def get_object(self):
         """
@@ -213,14 +212,13 @@ class PasswordResetRequestView(views.APIView):
                 token = default_token_generator.make_token(user)
                 uid = urlsafe_base64_encode(force_bytes(user.pk))
 
-                 # Manually construct the password reset URL using the domain from settings
-                base_url = settings.PRODUCTION_DOMAIN  # Using the domain from settings
-                reset_url = f"{base_url}{reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})}"
+                # Construct the password reset URL
+                reset_url = request.build_absolute_uri(  # Use `request` instead of `self.context['request']`
+                    reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
+                )
             
                 # Offload email sending to the background task
                 send_password_reset_email(user.id, reset_url)
-                logger.info(f"Password reset email sent to {user.email}")
-                
                 return Response({"message": "Password reset email sent."}, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -266,7 +264,7 @@ class UserListView(ListAPIView):
     Admins can only see regular users.
     """
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
 
     def get_queryset(self):
         user = self.request.user
@@ -286,13 +284,3 @@ def total_users_view(request):
     total_users = User.objects.count()
     return Response({"total_users": total_users})
 
-
-"""
-    from django.core.mail import send_mail
-    from django.urls import reverse
-    from django.utils.http import urlsafe_base64_encode
-    from django.utils.encoding import force_bytes
-    from django.template.loader import render_to_string
-    from django.contrib.auth.tokens import default_token_generator
-    from django.utils.http import urlsafe_base64_decode
-"""
