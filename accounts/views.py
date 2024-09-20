@@ -29,7 +29,7 @@ User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
-@method_decorator(csrf_exempt, name='dispatch')
+#@method_decorator(csrf_exempt, name='dispatch')
 class UserRegistrationView(views.APIView):
     """
     API endpoint for registering a new user.
@@ -75,7 +75,6 @@ class UserRegistrationView(views.APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
-@method_decorator(csrf_exempt, name='dispatch')
 class UpdateUserRoleView(views.APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminUser]  # Only Admins and Superusers can access
 
@@ -99,7 +98,6 @@ class UpdateUserRoleView(views.APIView):
         return Response({"message": "User type updated successfully."}, status=status.HTTP_200_OK)
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
     API endpoint for obtaining JWT tokens with custom claims.
@@ -115,7 +113,6 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         return super().post(request, *args, **kwargs)
     
     
-@method_decorator(csrf_exempt, name='dispatch')
 class UserDetailView(generics.RetrieveUpdateAPIView):
     """
     Retrieve or update the details of a user.
@@ -171,7 +168,6 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
         return self.update(request, *args, **kwargs)
     
 
-@method_decorator(csrf_exempt, name='dispatch')
 class PasswordChangeView(views.APIView):
     """
     Allow any authenticated user (regular user, admin, or superadmin) to update their own password.
@@ -197,7 +193,6 @@ class PasswordChangeView(views.APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
-@method_decorator(csrf_exempt, name='dispatch')
 class PasswordResetRequestView(views.APIView):
     """
     Request a password reset via email.
@@ -230,7 +225,6 @@ class PasswordResetRequestView(views.APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-@method_decorator(csrf_exempt, name='dispatch')
 class PasswordResetView(views.APIView):
     """
     Reset a user's password.
@@ -264,7 +258,6 @@ class PasswordResetView(views.APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-@method_decorator(csrf_exempt, name='dispatch')  
 class UserListView(ListAPIView):
     """
     List users based on the role of the requester.
@@ -284,7 +277,6 @@ class UserListView(ListAPIView):
             return User.objects.none()  # Regular users can't access the user list
 
 
-@method_decorator(csrf_exempt, name='dispatch')
 @api_view(['GET'])
 def total_users_view(request):
     """
