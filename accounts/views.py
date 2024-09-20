@@ -7,6 +7,8 @@ from rest_framework.generics import ListAPIView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .permissions import IsAdminUser
+from django.views.decorators.csrf import csrf_exempt
+from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
 from django.template import TemplateDoesNotExist
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -27,6 +29,7 @@ User = get_user_model()
 
 logger = logging.getLogger(__name__)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class UserRegistrationView(views.APIView):
     """
     API endpoint for registering a new user.
@@ -70,8 +73,9 @@ class UserRegistrationView(views.APIView):
                 logger.error(f"Error during user creation: {e}")
                 return Response({"error": "An unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
 
-
+@method_decorator(csrf_exempt, name='dispatch')
 class UpdateUserRoleView(views.APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminUser]  # Only Admins and Superusers can access
 
@@ -95,7 +99,7 @@ class UpdateUserRoleView(views.APIView):
         return Response({"message": "User type updated successfully."}, status=status.HTTP_200_OK)
 
 
-
+@method_decorator(csrf_exempt, name='dispatch')
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
     API endpoint for obtaining JWT tokens with custom claims.
@@ -110,7 +114,8 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
     
-
+    
+@method_decorator(csrf_exempt, name='dispatch')
 class UserDetailView(generics.RetrieveUpdateAPIView):
     """
     Retrieve or update the details of a user.
@@ -165,7 +170,8 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
     
-    
+
+@method_decorator(csrf_exempt, name='dispatch')
 class PasswordChangeView(views.APIView):
     """
     Allow any authenticated user (regular user, admin, or superadmin) to update their own password.
@@ -189,8 +195,9 @@ class PasswordChangeView(views.APIView):
             user.save()
             return Response({"message": "Password updated successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
 
-
+@method_decorator(csrf_exempt, name='dispatch')
 class PasswordResetRequestView(views.APIView):
     """
     Request a password reset via email.
@@ -223,6 +230,7 @@ class PasswordResetRequestView(views.APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class PasswordResetView(views.APIView):
     """
     Reset a user's password.
@@ -256,7 +264,7 @@ class PasswordResetView(views.APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    
+@method_decorator(csrf_exempt, name='dispatch')  
 class UserListView(ListAPIView):
     """
     List users based on the role of the requester.
@@ -276,6 +284,7 @@ class UserListView(ListAPIView):
             return User.objects.none()  # Regular users can't access the user list
 
 
+@method_decorator(csrf_exempt, name='dispatch')
 @api_view(['GET'])
 def total_users_view(request):
     """
