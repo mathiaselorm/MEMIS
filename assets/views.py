@@ -1,12 +1,16 @@
 from django.http import Http404
+from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from .models import Asset, MaintenanceReport, Department, AssetStatus
-from .serializers import DepartmentSerializer, AssetSerializer, MaintenanceReportSerializer
+from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions,  DjangoModelPermissionsOrAnonReadOnly
+from .models import Asset, Department, AssetStatus, ActionLog
+from auditlog.models import LogEntry
+from .serializers import DepartmentSerializer, AssetSerializer, LogEntrySerializer, ActionLogSerializer
 from .utils import get_object_by_id_or_slug
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
+
 
 
 
@@ -15,6 +19,8 @@ class DepartmentList(APIView):
     """
     List all departments or create a new department.
     """
+    permission_classes = [IsAuthenticated]  # Ensure only authenticated users can access this view
+
     @swagger_auto_schema(
         operation_description="Get a list of all departments",
         responses={
@@ -32,10 +38,14 @@ class DepartmentList(APIView):
         request_body=DepartmentSerializer,
         responses={
             201: openapi.Response('Department created', DepartmentSerializer),
-            400: 'Bad Request - Invalid Data'
+            400: 'Bad Request - Invalid Data',
+            401: 'Unauthorized'
         }
     )
     def post(self, request, format=None):
+        if not request.user.is_staff:
+            return Response({"detail": "You do not have permission to perform this action."}, status=status.HTTP_403_FORBIDDEN)
+        
         serializer = DepartmentSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
@@ -48,13 +58,17 @@ class DepartmentDetail(APIView):
     """
     Retrieve, update, or delete a department using either an ID or a slug.
     """
+    permission_classes = [IsAuthenticated, DjangoModelPermissions]  # Apply model-level permissions
+    
+    def get_queryset(self):
+        return Department.objects.all()
 
     def get_object(self, identifier):
         """
         Use the get_object_by_id_or_slug utility to handle both IDs and slugs.
         """
-        return get_object_by_id_or_slug(Department, identifier)
-
+        return get_object_by_id_or_slug(Department, identifier, id_field='id', slug_field='slug')
+    
     @swagger_auto_schema(
         operation_description="Retrieve a department by its ID or slug",
         responses={
@@ -107,6 +121,7 @@ class DepartmentDetail(APIView):
 
 
 
+
 class TotalDepartmentsView(APIView):
     """
     View to return the total number of departments in the system.
@@ -142,13 +157,13 @@ class AssetList(APIView):
     """
     List all assets or create a new asset.
     """
+    permission_classes = [IsAuthenticated, DjangoModelPermissionsOrAnonReadOnly]  # Control access based on user permissions
 
     @swagger_auto_schema(
         operation_description="Retrieve a list of all assets",
         responses={
-            200: openapi.Response('Successfully updated', AssetSerializer),
-            400: 'Invalid input data',
-            404: 'Department not found'
+            200: openapi.Response('Successfully retrieved', AssetSerializer(many=True)),
+            401: 'Unauthorized - Authentication credentials were not provided.'
         }
     )
     def get(self, request, format=None):
@@ -160,10 +175,7 @@ class AssetList(APIView):
         operation_description="Create a new asset",
         request_body=AssetSerializer,
         responses={
-            201: openapi.Response(
-                description="Asset created successfully",
-                schema=AssetSerializer
-            ),
+            201: openapi.Response('Asset created successfully', AssetSerializer),
             400: 'Bad request due to invalid input',
             401: 'Unauthorized - Authentication credentials were not provided.'
         }
@@ -176,11 +188,13 @@ class AssetList(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+
 class TrackingByDepartmentView(APIView):
     """
     View to return all assets under a specific department.
     """
-    
+    permission_classes = [IsAuthenticated]  # Ensure that only authenticated users can access this view.
+
     @swagger_auto_schema(
         operation_description="Retrieve all assets belonging to a specific department.",
         responses={
@@ -201,14 +215,18 @@ class TrackingByDepartmentView(APIView):
         ]
     )
     def get(self, request, identifier, format=None):
-        # Use the utility function to fetch the department by ID or slug
-        department = get_object_by_id_or_slug(Department, identifier)
+        # Attempt to retrieve the department by ID or slug
+        department = get_object_or_404(Department, pk=identifier)
+        # If the identifier fails, attempt to get by slug
+        if not department:
+            department = get_object_or_404(Department, slug=identifier)
         
         # Filter assets by the department
         assets = Asset.objects.filter(department=department)
         serializer = AssetSerializer(assets, many=True)
         
         return Response(serializer.data)
+
 
 
 class TrackingByStatusView(APIView):
@@ -360,59 +378,41 @@ class TotalAssetsUnderMaintenanceView(APIView):
         return Response({'assets_under_maintenance': assets_under_maintenance_count})
 
 
-class AssetMaintenanceReports(APIView):
-    """
-    List all maintenance reports for a specific asset.
-    """
-    def get(self, request, pk, format=None):
-        try:
-            asset = Asset.objects.get(pk=pk)
-        except Asset.DoesNotExist:
-            return Response({'error': 'Asset not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        reports = MaintenanceReport.objects.filter(asset=asset)
-        serializer = MaintenanceReportSerializer(reports, many=True)
-        return Response(serializer.data)
+class AuditLogView(APIView):
+    """
+    API endpoint that returns a list of all audit logs from Django-Auditlog.
+    """
+    permission_classes = [IsAuthenticated]
     
-
-class CreateMaintenanceReport(APIView):
-    """
-    Create a new maintenance report, expecting asset identifier in the request body.
-    """
-    def post(self, request, format=None):
-        serializer = MaintenanceReportSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-
-class MaintenanceReportDetail(APIView):
-    """
-    Retrieve, update, or delete a maintenance report specific to an asset.
-    """
-    def get_object(self, asset_pk, report_pk):
-        try:
-            # Ensure that the report belongs to the specified asset
-            return MaintenanceReport.objects.get(pk=report_pk, asset__pk=asset_pk)
-        except MaintenanceReport.DoesNotExist:
-            raise Http404("Maintenance report not found")
-
-    def get(self, request, asset_pk, report_pk, format=None):
-        report = self.get_object(asset_pk, report_pk)
-        serializer = MaintenanceReportSerializer(report)
+    @swagger_auto_schema(
+        operation_summary="Retrieve all Django-Auditlog entries",
+        operation_description="Returns a list of all audit log entries recorded by Django-Auditlog, ordered by most recent.",
+        responses={
+            200: openapi.Response('List of audit logs', LogEntrySerializer(many=True)),
+            403: "Forbidden - User is not authorized to access this endpoint"
+        }
+    )
+    def get(self, request, format=None):
+        logs = LogEntry.objects.all().order_by('-timestamp')
+        serializer = LogEntrySerializer(logs, many=True)
         return Response(serializer.data)
 
-    def put(self, request, asset_pk, report_pk, format=None):
-        report = self.get_object(asset_pk, report_pk)
-        serializer = MaintenanceReportSerializer(report, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    def delete(self, request, asset_pk, report_pk, format=None):
-        report = self.get_object(asset_pk, report_pk)
-        report.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
+class ActionLogView(APIView):
+    """
+    API endpoint that returns a list of all action logs from custom ActionLog.
+    """
+    permission_classes = [IsAuthenticated]
+    
+    @swagger_auto_schema(
+        operation_summary="Retrieve all custom ActionLog entries",
+        operation_description="Returns a list of all action log entries from the custom ActionLog model, detailing specific user actions on assets.",
+        responses={
+            200: openapi.Response('List of action logs', ActionLogSerializer(many=True)),
+            403: "Forbidden - User is not authorized to access this endpoint"
+        }
+    )
+    def get(self, request, format=None):
+        logs = ActionLog.objects.all().order_by('-timestamp')
+        serializer = ActionLogSerializer(logs, many=True)
+        return Response(serializer.data)

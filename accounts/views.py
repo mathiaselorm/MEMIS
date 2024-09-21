@@ -7,8 +7,6 @@ from rest_framework.generics import ListAPIView
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from .permissions import IsAdminUser
-from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
 from drf_yasg.utils import swagger_auto_schema
 from django.template import TemplateDoesNotExist
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -25,11 +23,12 @@ import logging
 
 
 
-User = get_user_model()
 
+
+
+User = get_user_model()
 logger = logging.getLogger(__name__)
 
-#@method_decorator(csrf_exempt, name='dispatch')
 class UserRegistrationView(views.APIView):
     """
     API endpoint for registering a new user.
@@ -61,9 +60,7 @@ class UserRegistrationView(views.APIView):
 
                 # Prepare the response with user details and tokens
                 return Response({
-                    'user': UserSerializer(user).data,
-                    'refresh': str(token),
-                    'access': str(token.access_token)
+                    'user': UserSerializer(user).data
                 }, status=status.HTTP_201_CREATED)
 
             except TemplateDoesNotExist as e:
@@ -73,7 +70,7 @@ class UserRegistrationView(views.APIView):
                 logger.error(f"Error during user creation: {e}")
                 return Response({"error": "An unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
 
 class UpdateUserRoleView(views.APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminUser]  # Only Admins and Superusers can access
@@ -98,6 +95,7 @@ class UpdateUserRoleView(views.APIView):
         return Response({"message": "User type updated successfully."}, status=status.HTTP_200_OK)
 
 
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
     API endpoint for obtaining JWT tokens with custom claims.
@@ -112,7 +110,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
     
-    
+
 class UserDetailView(generics.RetrieveUpdateAPIView):
     """
     Retrieve or update the details of a user.
@@ -167,7 +165,7 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
     
-
+    
 class PasswordChangeView(views.APIView):
     """
     Allow any authenticated user (regular user, admin, or superadmin) to update their own password.
@@ -191,7 +189,7 @@ class PasswordChangeView(views.APIView):
             user.save()
             return Response({"message": "Password updated successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
 
 class PasswordResetRequestView(views.APIView):
     """
@@ -257,6 +255,7 @@ class PasswordResetView(views.APIView):
                 return Response({"message": "Invalid token or user ID."}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
     
 class UserListView(ListAPIView):
     """

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Asset,  MaintenanceReport, Department
+from .models import Asset, Department
 
 
 class DepartmentAdmin(admin.ModelAdmin):
@@ -29,18 +29,6 @@ class AssetAdmin(admin.ModelAdmin):
 
 
 
-class MaintenanceReportAdmin(admin.ModelAdmin):
-    list_display = ('asset', 'maintenance_type', 'date_performed', 'added_by')
-    list_filter = ('maintenance_type', 'date_performed', 'asset__department')
-    search_fields = ('asset__name', 'details')
-
-    def get_department(self, obj):
-        return obj.asset.department.name
-    get_department.admin_order_field = 'asset__department'  # Allows sorting
-    get_department.short_description = 'Department'
-
-
 
 admin.site.register(Department, DepartmentAdmin)
 admin.site.register(Asset, AssetAdmin)
-admin.site.register(MaintenanceReport, MaintenanceReportAdmin)

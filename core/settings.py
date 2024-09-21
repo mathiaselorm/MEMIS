@@ -59,7 +59,11 @@ BACKGROUND_TASK_COMPLETE_EXPIRED = 60 * 60 * 24  # Completed tasks expire after 
 
 PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 
-PRODUCTION_DOMAIN = 'https://memis-90605b282646.herokuapp.com' # for generating a production base url for password reset
+
+CSRF_COOKIE_HTTPONLY = False  # Allows JavaScript to access the token
+CSRF_COOKIE_NAME = "csrftoken"  # Name of the CSRF token in cookies
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'https://your-frontend-url.com']  # Frontend URLs that Django trusts
+
 
 # Application definition
 
@@ -71,11 +75,13 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'background_task',
+    'django_cleanup.apps.CleanupConfig',
     'rest_framework',
     'rest_framework_simplejwt',
     'corsheaders',
     'django_filters',
     'drf_yasg',
+    'auditlog',
     'accounts',
     'assets',
     'inventory'
@@ -111,9 +117,6 @@ REST_FRAMEWORK = {
 ROOT_URLCONF = 'core.urls'
 
 CORS_ALLOW_ALL_ORIGINS = True
-
-CSRF_TRUSTED_ORIGINS = ['http://localhost:5173']
-
 
 TEMPLATES = [
     {

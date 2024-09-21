@@ -18,14 +18,7 @@ urlpatterns = [
     path('total_departments/', views.TotalDepartmentsView.as_view(), name='total-departments'),
     path('departments/<str:identifier>/assets/', views.TrackingByDepartmentView.as_view(), name='department-assets'),
     path('assets/status/tracking/', views.TrackingByStatusView.as_view(), name='assets-by-status'),
-
     
-
- 
-
-    # Maintenance Report URLs
-    path('assets/<int:pk>/maintenance-reports/', views.AssetMaintenanceReports.as_view(), name='asset-maintenance-reports'),
-    path('maintenance-reports/create/', views.CreateMaintenanceReport.as_view(), name='create-maintenance-report'),
-    path('assets/<int:asset_pk>/maintenance-reports/<int:report_pk>/', views.MaintenanceReportDetail.as_view(), name='maintenance-report-detail'),
-    
+    path('api/auditlogs/', views.AuditLogView.as_view(), name='audit-logs'),
+    path('api/actionlogs/', views.ActionLogView.as_view(), name='action-logs'),
 ]
