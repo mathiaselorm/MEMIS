@@ -34,6 +34,29 @@ class Department(DirtyFieldsMixin, models.Model):
     def __str__(self):
         return self.name
     
+    @property
+    def total_assets(self):
+        return self.assets.count()
+
+    @property
+    def total_active_assets(self):
+        return self.assets.filter(status='active').count()
+
+    @property
+    def total_archive_assets(self):
+        return self.assets.filter(is_archived=True).count()
+
+    @property
+    def total_assets_under_maintenance(self):
+        return self.assets.filter(status='repair').count()
+
+    @property
+    def total_commissioned_assets(self):
+        return self.assets.filter(commission_date__isnull=False).count()
+
+    @property
+    def total_decommissioned_assets(self):
+        return self.assets.filter(status='decommissioned').count()
     
 
 class Asset(DirtyFieldsMixin, models.Model):  # Include DirtyFieldsMixin
