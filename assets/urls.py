@@ -7,7 +7,7 @@ from . import views
 urlpatterns = [
     # Asset URLs
     path('assets/', views.AssetList.as_view(), name='asset-list'),
-    path('assets/<uuid:pk>/', views.AssetDetail.as_view(), name='asset-detail'),
+    path('assets/<int:pk>/', views.AssetDetail.as_view(), name='asset-detail'),
     path('assets/total/', views.TotalAssetsView.as_view(), name='total-assets'),
     path('assets/under-maintenance/', views.TotalAssetsUnderMaintenanceView.as_view(), name='assets-maintenance-count'),
 
