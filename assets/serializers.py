@@ -24,7 +24,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
         fields = [
-            'name', 'slug', 'head', 'contact_phone', 'contact_email',
+            'id', 'name', 'slug', 'head', 'contact_phone', 'contact_email',
             'total_assets', 'active_assets', 'archive_assets',
             'assets_under_maintenance', 'total_commissioned_assets', 'total_decommissioned_assets',
             'is_draft'
