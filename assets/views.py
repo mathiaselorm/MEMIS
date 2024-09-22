@@ -1,5 +1,6 @@
 from django.http import Http404
 from django.shortcuts import get_object_or_404
+from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -153,39 +154,25 @@ class TotalDepartmentsView(APIView):
 
 
 
-class AssetList(APIView):
-    """
-    List all assets or create a new asset.
-    """
-    permission_classes = [IsAuthenticated, DjangoModelPermissionsOrAnonReadOnly]  # Control access based on user permissions
+class AssetList(generics.ListCreateAPIView):
+    queryset = Asset.objects.all()  # Provide the queryset
+    serializer_class = AssetSerializer  # Provide the serializer
+    permission_classes = [IsAuthenticated, DjangoModelPermissionsOrAnonReadOnly]  # Permissions
 
     @swagger_auto_schema(
         operation_description="Retrieve a list of all assets",
-        responses={
-            200: openapi.Response('Successfully retrieved', AssetSerializer(many=True)),
-            401: 'Unauthorized - Authentication credentials were not provided.'
-        }
+        responses={200: AssetSerializer(many=True)}
     )
-    def get(self, request, format=None):
-        assets = Asset.objects.all()
-        serializer = AssetSerializer(assets, many=True)
-        return Response(serializer.data)
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Create a new asset",
         request_body=AssetSerializer,
-        responses={
-            201: openapi.Response('Asset created successfully', AssetSerializer),
-            400: 'Bad request due to invalid input',
-            401: 'Unauthorized - Authentication credentials were not provided.'
-        }
+        responses={201: AssetSerializer}
     )
-    def post(self, request, format=None):
-        serializer = AssetSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
 
 
 
