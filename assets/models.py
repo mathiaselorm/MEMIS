@@ -37,7 +37,6 @@ class Department(DirtyFieldsMixin, models.Model):
     
 
 class Asset(DirtyFieldsMixin, models.Model):  # Include DirtyFieldsMixin
-    asset_id = models.UUIDField(_("Asset ID"), primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     device_type = models.CharField(max_length=255, null=True, blank=True)
     embossment_id = models.CharField(max_length=100, unique=True)
