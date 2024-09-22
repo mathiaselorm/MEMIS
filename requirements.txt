@@ -48,6 +48,7 @@ idna==3.8
 inflection==0.5.1
 kombu==5.4.0
 msgpack==1.0.8
+mysqlclient==2.2.4
 packaging==24.1
 pillow==10.4.0
 prompt_toolkit==3.0.47
