@@ -15,7 +15,7 @@ urlpatterns = [
     # Department URLs
     path('departments/', views.DepartmentList.as_view(), name='department-list'),
     path('departments/<str:identifier>/', views.DepartmentDetail.as_view(), name='department-detail'),
-    path('total_departments/', views.TotalDepartmentsView.as_view(), name='total-departments'),
+    path('total-departments/', views.TotalDepartmentsView.as_view(), name='total-departments'),
     path('departments/<str:identifier>/assets/', views.TrackingByDepartmentView.as_view(), name='department-assets'),
     path('assets/status/tracking/', views.TrackingByStatusView.as_view(), name='assets-by-status'),
     
