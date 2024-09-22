@@ -215,11 +215,8 @@ class TrackingByDepartmentView(APIView):
         ]
     )
     def get(self, request, identifier, format=None):
-        # Attempt to retrieve the department by ID or slug
-        department = get_object_or_404(Department, pk=identifier)
-        # If the identifier fails, attempt to get by slug
-        if not department:
-            department = get_object_or_404(Department, slug=identifier)
+        # Use the utility function to fetch the department by ID or slug
+        department = get_object_by_id_or_slug(Department, identifier)
         
         # Filter assets by the department
         assets = Asset.objects.filter(department=department)
@@ -394,9 +391,20 @@ class AuditLogView(APIView):
         }
     )
     def get(self, request, format=None):
-        logs = LogEntry.objects.all().order_by('-timestamp')
-        serializer = LogEntrySerializer(logs, many=True)
+        asset_id = request.query_params.get('asset_id')
+        asset_name = request.query_params.get('asset_name')
+
+        queryset = LogEntry.objects.all()
+
+        # Filter by asset ID or asset name if provided
+        if asset_id:
+            queryset = queryset.filter(object_pk=asset_id)
+        elif asset_name:
+            queryset = queryset.filter(object_repr__icontains=asset_name)
+
+        serializer = LogEntrySerializer(queryset, many=True)
         return Response(serializer.data)
+
 
 class ActionLogView(APIView):
     """

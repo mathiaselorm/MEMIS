@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Asset, AssetStatus, Department, ActionLog, DepartmentStatus
+from .models import Asset, AssetStatus, Department, ActionLog, DepartmentStatus, ActionType
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from django.contrib.auth import get_user_model
@@ -63,18 +63,27 @@ class DepartmentSerializer(serializers.ModelSerializer):
     
      
 class AssetSerializer(serializers.ModelSerializer):
-    department_name = serializers.ReadOnlyField(source='department.name')
+    department = serializers.SerializerMethodField()  
+    added_by = serializers.SerializerMethodField()
 
     class Meta:
         model = Asset
         fields = [
-            'asset_id', 'name', 'device_type', 'embossment_id', 'serial_number', 'status', 'is_draft',
-            'department', 'department_name', 'quantity', 'manufacturer', 'model',
-            'embossment_date', 'manufacturing_date', 'description', 'commission_date',
-            'decommission_date', 'created_at', 'updated_at', 'is_archived', 'added_by'
+            'asset_id', 'name', 'device_type', 'embossment_id', 'serial_number', 'status',
+            'department', 'quantity', 'manufacturer', 'model',  'description',
+            'embossment_date', 'manufacturing_date', 'commission_date',
+            'decommission_date', 'created_at', 'updated_at', 'is_archived', 'added_by', 'is_draft'
         ]
         extra_kwargs = {'status': {'read_only': True}}
+    
+    def get_department(self, obj):
+        return obj.department.name if obj.department else None
 
+    def get_added_by(self, obj):
+        if obj.added_by:
+            return f"{obj.added_by.first_name} {obj.added_by.last_name}"
+        return None
+    
     def create(self, validated_data):
         is_draft = validated_data.pop('is_draft', False)
         asset = super().create(validated_data)
@@ -136,16 +145,36 @@ class AssetMinimalSerializer(serializers.ModelSerializer):
         model = Asset
         fields = ['asset_id', 'name', 'device_type', 'embossment_id', 'department']
 
+
 class LogEntrySerializer(serializers.ModelSerializer):
-    actor = serializers.StringRelatedField()  # To show a user-friendly representation of the actor
+    actor = serializers.StringRelatedField()  # Shows the username or a string representation of the user
+    changes = serializers.SerializerMethodField()
 
     class Meta:
         model = LogEntry
         fields = ['action', 'timestamp', 'object_repr', 'changes', 'actor']
-        
+
+    def get_changes(self, obj):
+        """
+        Generate a user-friendly sentence form of the changes made.
+        """
+        changes = obj.changes_dict
+        change_messages = []
+
+        for field, values in changes.items():
+            if isinstance(values, list) and len(values) == 2:
+                old_value, new_value = values
+                change_messages.append(f"{field} changed from '{old_value}' to '{new_value}'")
+
+        return "; ".join(change_messages) if change_messages else "No changes recorded."
+
+    def get_actor(self, obj):
+        return obj.actor.get_full_name() if obj.actor else "Unknown User"
+    
 
 class ActionLogSerializer(serializers.ModelSerializer):
     performed_by = serializers.StringRelatedField()  # Shows the username or a string representation of the user
+    action = serializers.ChoiceField(choices=ActionType.choices)  # Ensure it's serialized correctly
 
     class Meta:
         model = ActionLog

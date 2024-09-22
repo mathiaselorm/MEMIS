@@ -19,6 +19,6 @@ urlpatterns = [
     path('departments/<str:identifier>/assets/', views.TrackingByDepartmentView.as_view(), name='department-assets'),
     path('assets/status/tracking/', views.TrackingByStatusView.as_view(), name='assets-by-status'),
     
-    path('api/auditlogs/', views.AuditLogView.as_view(), name='audit-logs'),
-    path('api/actionlogs/', views.ActionLogView.as_view(), name='action-logs'),
+    path('auditlogs/', views.AuditLogView.as_view(), name='audit-logs'),
+    path('actionlogs/', views.ActionLogView.as_view(), name='action-logs'),
 ]

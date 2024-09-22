@@ -70,10 +70,14 @@ class Asset(DirtyFieldsMixin, models.Model):  # Include DirtyFieldsMixin
         else:
             raise ValueError("Cannot change status of a draft asset.")
 
+class ActionType(models.TextChoices):
+    CREATE = 'create', _('Create')
+    UPDATE = 'update', _('Update')
+    DELETE = 'delete', _('Delete')
 
 
 class ActionLog(models.Model):
-    action = models.CharField(max_length=255, help_text=_("The type of action performed."))
+    action = models.CharField(max_length=10, choices=ActionType.choices, help_text=_("The type of action performed."))
     asset = models.ForeignKey('Asset', on_delete=models.CASCADE, related_name="action_logs", help_text=_("The asset that the action was performed on."))
     performed_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="action_logs", help_text=_("The user who performed the action."))
     timestamp = models.DateTimeField(auto_now_add=True, help_text=_("The time the action was logged."))
