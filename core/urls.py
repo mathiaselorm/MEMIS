@@ -20,7 +20,7 @@ from drf_yasg import openapi
 from rest_framework import permissions
 from django.urls import path, include
 from django.urls import re_path
-
+from accounts.views import CustomTokenObtainPairView
 
 
 schema_view = get_schema_view(
@@ -34,7 +34,6 @@ schema_view = get_schema_view(
 )
 
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
     TokenVerifyView,
 )
@@ -45,7 +44,7 @@ urlpatterns = [
     path('api/', include('assets.urls')),
     path('api/', include('inventory.urls')),
     path('api/', include('accounts.urls')),	
-    path('api/login/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/login/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/login/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/login/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
     re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),

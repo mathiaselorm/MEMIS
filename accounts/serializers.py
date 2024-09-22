@@ -130,30 +130,13 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def get_token(cls, user):
         token = super().get_token(user)
         # Add custom claims
-        token['email'] = user.email
         token['first_name'] = user.first_name
         token['last_name'] = user.last_name
+        token['email'] = user.email
         token['user_type'] = user.user_type 
+        token['phone_number'] = user.phone_number
 
         return token
-
-    def validate(self, attrs):
-        data = super().validate(attrs)
-        refresh = self.get_token(self.user)
-
-        data['refresh'] = str(refresh)
-        data['access'] = str(refresh.access_token)
-
-        # Add extra responses here
-        data['user'] = {
-            'first_name': self.user.first_name,
-            'last_name': self.user.last_name,
-            'email': self.user.email,
-            'phone_number': self.user.phone_number,
-            'date_joined': self.user.date_joined,
-            'last_login': self.user.last_login,
-        }
-        return data
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):

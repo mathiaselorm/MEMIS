@@ -1,7 +1,6 @@
 from django.urls import path
 from . import views
 from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
     TokenRefreshView,
     TokenVerifyView,
 )
@@ -15,7 +14,7 @@ urlpatterns = [
     path('admin/user/<int:pk>/update-role/', views.UpdateUserRoleView.as_view(), name='update_user_role'),
     
     # endpoint for Admin login
-    path('admin/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('admin/login/', views.CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     
     path('admin/login/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     
