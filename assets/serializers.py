@@ -70,7 +70,7 @@ class AssetSerializer(serializers.ModelSerializer):
         model = Asset
         fields = [
             'id', 'name', 'device_type', 'embossment_id', 'serial_number', 'status',
-            'department', 'quantity', 'manufacturer', 'model',  'description',
+            'department', 'quantity', 'manufacturer', 'model',  'description', 'image',
             'embossment_date', 'manufacturing_date', 'commission_date',
             'decommission_date', 'created_at', 'updated_at', 'is_archived', 'added_by', 'is_draft'
         ]

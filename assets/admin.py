@@ -16,7 +16,7 @@ class AssetAdmin(admin.ModelAdmin):
     # Customize form layout - Optional
     fieldsets = (
         (None, {
-            'fields': ('name', 'device_type', 'serial_number', 'embossment_id', 'quantity', )
+            'fields': ('name', 'device_type', 'serial_number', 'embossment_id', 'quantity', 'image', )
         }),
         ('Availability', {
             'fields': ('status', 'department', 'is_archived', 'added_by')
