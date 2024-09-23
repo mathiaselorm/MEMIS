@@ -91,6 +91,13 @@ class Asset(DirtyFieldsMixin, models.Model):  # Include DirtyFieldsMixin
             self.save()
         else:
             raise ValueError("Cannot change status of a draft asset.")
+        
+    def delete(self, *args, **kwargs):
+        """
+        Override the delete method to implement soft delete (archiving).
+        """
+        self.is_archived = True
+        self.save(update_fields=['is_archived'])
 
 class ActionType(models.TextChoices):
     CREATE = 'create', _('Create')
