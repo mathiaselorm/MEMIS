@@ -155,9 +155,14 @@ class TotalDepartmentsView(APIView):
 
 
 class AssetList(generics.ListCreateAPIView):
-    queryset = Asset.objects.all()  # Provide the queryset
     serializer_class = AssetSerializer  # Provide the serializer
     permission_classes = [IsAuthenticated, DjangoModelPermissionsOrAnonReadOnly]  # Permissions
+    
+    def get_queryset(self):
+        """
+        Override the queryset to only retrieve non-archived assets.
+        """
+        return Asset.objects.filter(is_archived=False)
 
     @swagger_auto_schema(
         operation_description="Retrieve a list of all assets",
@@ -206,7 +211,7 @@ class TrackingByDepartmentView(APIView):
         department = get_object_by_id_or_slug(Department, identifier)
         
         # Filter assets by the department
-        assets = Asset.objects.filter(department=department)
+        assets = Asset.objects.filter(department=department, is_archived=False)  # Exclude archived assets
         serializer = AssetSerializer(assets, many=True)
         
         return Response(serializer.data)
@@ -246,7 +251,7 @@ class TrackingByStatusView(APIView):
             return Response({'error': 'Invalid status provided.'}, status=status.HTTP_400_BAD_REQUEST)
 
         # Filter assets based on the status
-        assets = Asset.objects.filter(status=status_query)
+        assets = Asset.objects.filter(status=status_query, is_archived=False)  # Exclude archived assets
         serializer = AssetSerializer(assets, many=True)
         
         return Response(serializer.data)
@@ -258,7 +263,7 @@ class AssetDetail(APIView):
     """
     def get_object(self, pk):
         try:
-            return Asset.objects.get(pk=pk)
+            return Asset.objects.get(pk=pk, is_archived=False)
         except Asset.DoesNotExist:
             raise Http404
     
@@ -306,7 +311,7 @@ class AssetDetail(APIView):
     )
     def delete(self, request, pk, format=None):
         asset = self.get_object(pk)
-        asset.delete()
+        asset.delete() # This will soft delete (archive) the asset
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
