@@ -123,7 +123,7 @@ CLOUDINARY_STORAGE = {
 }
 
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.RawMediaCloudinaryStorage'
-MEDIA_URL = 'https://res.cloudinary.com/dr8uzgh5e/'  # Replace {your_cloud_name} with your actual cloud name
+MEDIA_URL = 'https://res.cloudinary.com/dr8uzgh5e/image/upload/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 ROOT_URLCONF = 'core.urls'
