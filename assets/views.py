@@ -259,14 +259,14 @@ class TrackingByStatusView(APIView):
 
 class AssetDetail(APIView):
     """
-    Retrieve, update, or delete an asset.
+    Retrieve, update, partially update, or delete an asset.
     """
     def get_object(self, pk):
         try:
             return Asset.objects.get(pk=pk, is_archived=False)
         except Asset.DoesNotExist:
             raise Http404
-    
+
     @swagger_auto_schema(
         operation_description="Retrieve an asset by its primary key.",
         responses={
@@ -280,7 +280,10 @@ class AssetDetail(APIView):
     def get(self, request, pk, format=None):
         asset = self.get_object(pk)
         serializer = AssetSerializer(asset)
-        return Response(serializer.data)
+        return Response({
+            "message": "Asset retrieved successfully.",
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)
 
     @swagger_auto_schema(
         operation_description="Update an asset by its primary key.",
@@ -299,8 +302,40 @@ class AssetDetail(APIView):
         serializer = AssetSerializer(asset, data=request.data)
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "message": "Asset updated successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
+        return Response({
+            "message": "Invalid data provided.",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        operation_description="Partially update an asset by its primary key.",
+        request_body=AssetSerializer(partial=True),  # Allow partial updates
+        responses={
+            200: openapi.Response(
+                description="Asset partially updated successfully.",
+                schema=AssetSerializer()
+            ),
+            400: "Invalid data provided.",
+            404: "Asset not found."
+        }
+    )
+    def patch(self, request, pk, format=None):
+        asset = self.get_object(pk)
+        serializer = AssetSerializer(asset, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "message": "Asset partially updated successfully.",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
+        return Response({
+            "message": "Invalid data provided.",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     @swagger_auto_schema(
         operation_description="Delete an asset by its primary key.",
@@ -311,8 +346,12 @@ class AssetDetail(APIView):
     )
     def delete(self, request, pk, format=None):
         asset = self.get_object(pk)
-        asset.delete() # This will soft delete (archive) the asset
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        asset.delete()  # This will soft delete (archive) the asset
+        return Response({
+            "message": "Asset deleted successfully."
+        }, status=status.HTTP_204_NO_CONTENT)
+
+
 
 
 class TotalAssetsView(APIView):
