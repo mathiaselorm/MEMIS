@@ -35,7 +35,7 @@ class Department(DirtyFieldsMixin, models.Model):
     is_draft = models.BooleanField(default=False)  # Track if the department is in draft status
 
     def __str__(self):
-        return self.name
+        return self.name or 'Unknown Department'
     
     @property
     def total_assets(self):
