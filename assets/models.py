@@ -2,11 +2,14 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
-import uuid
 from auditlog.registry import auditlog
 from auditlog.models import AuditlogHistoryField
 from dirtyfields import DirtyFieldsMixin 
+from cloudinary.models import CloudinaryField
+import helpers
 
+
+helpers.cloudinary_init()
 
 User = get_user_model()
 
@@ -80,7 +83,7 @@ class Asset(DirtyFieldsMixin, models.Model):  # Include DirtyFieldsMixin
     embossment_date = models.DateField(null=True, blank=True)
     manufacturing_date = models.DateField(null=True, blank=True)
     description = models.TextField()
-    image = models.ImageField(upload_to=upload_asset_image, null=True, blank=True)
+    image = CloudinaryField('image', null=True, blank=True, resource_type='image', folder='assets', use_filename=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     commission_date = models.DateField(null=True, blank=True)

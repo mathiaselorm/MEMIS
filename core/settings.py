@@ -22,6 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 import os
 import environ
+from decouple import config
 
 
 # Initialise environment variables
@@ -74,6 +75,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'cloudinary_storage',
+    'cloudinary',
     'background_task',
     'django_cleanup.apps.CleanupConfig',
     'rest_framework',
@@ -82,8 +85,6 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_yasg',
     'auditlog',
-    'cloudinary_storage',
-    'cloudinary',
     'accounts',
     'assets',
     'inventory'
@@ -116,11 +117,7 @@ REST_FRAMEWORK = {
     #'PAGE_SIZE': 10,  # Default page size
 }
 
-CLOUDINARY_STORAGE = {
-    'CLOUDINARY_CLOUD_NAME': env('CLOUDINARY_CLOUD_NAME'),
-    'CLOUDINARY_API_KEY': env('CLOUDINARY_API_KEY'),
-    'CLOUDINARY_API_SECRET': env('CLOUDINARY_API_SECRET'),
-}
+
 
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.RawMediaCloudinaryStorage'
 MEDIA_URL = 'https://res.cloudinary.com/dr8uzgh5e/image/upload/'
