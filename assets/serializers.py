@@ -74,7 +74,6 @@ class AssetSerializer(serializers.ModelSerializer):
             'embossment_date', 'manufacturing_date', 'commission_date',
             'decommission_date', 'created_at', 'updated_at', 'is_archived', 'added_by', 'is_draft'
         ]
-        extra_kwargs = {'status': {'read_only': True}}
     
     def get_department(self, obj):
         return obj.department.name if obj.department else None
