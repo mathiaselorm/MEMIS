@@ -156,7 +156,7 @@ class TotalDepartmentsView(APIView):
 
 class AssetList(generics.ListCreateAPIView):
     serializer_class = AssetSerializer  # Provide the serializer
-    permission_classes = [IsAuthenticated, DjangoModelPermissionsOrAnonReadOnly]  # Permissions
+    permission_classes = [IsAuthenticated]  # Permissions , DjangoModelPermissionsOrAnonReadOnly
     
     def get_queryset(self):
         """
@@ -261,6 +261,8 @@ class AssetDetail(APIView):
     """
     Retrieve, update, partially update, or delete an asset.
     """
+    permission_classes = [IsAuthenticated]
+    
     def get_object(self, pk):
         try:
             return Asset.objects.get(pk=pk, is_archived=False)
