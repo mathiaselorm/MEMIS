@@ -65,16 +65,17 @@ class DepartmentSerializer(serializers.ModelSerializer):
 class AssetSerializer(serializers.ModelSerializer):
     department = serializers.SerializerMethodField()  
     added_by = serializers.SerializerMethodField()
+    image = serializers.ImageField(max_length=None, allow_empty_file=True, use_url=True)
 
     class Meta:
         model = Asset
         fields = [
             'id', 'name', 'device_type', 'embossment_id', 'serial_number', 'status',
-            'department', 'quantity', 'manufacturer', 'model',  'description', 'image',
+            'department', 'quantity', 'manufacturer', 'model', 'description', 'image',
             'embossment_date', 'manufacturing_date', 'commission_date',
             'decommission_date', 'created_at', 'updated_at', 'is_archived', 'added_by', 'is_draft'
         ]
-    
+
     def get_department(self, obj):
         return obj.department.name if obj.department else None
 
@@ -82,15 +83,15 @@ class AssetSerializer(serializers.ModelSerializer):
         if obj.added_by:
             return f"{obj.added_by.first_name} {obj.added_by.last_name}"
         return None
-    
+
     def create(self, validated_data):
         is_draft = validated_data.pop('is_draft', False)
         asset = super().create(validated_data)
 
         if is_draft:
-            asset.status = AssetStatus.DRAFT  # Just set the status to DRAFT
+            asset.status = AssetStatus.INACTIVE  # Set to inactive if it's a draft
         else:
-            asset.status = AssetStatus.ACTIVE  # Set to active or another default status
+            asset.status = AssetStatus.ACTIVE
 
         asset.save()
         return asset
@@ -99,31 +100,24 @@ class AssetSerializer(serializers.ModelSerializer):
         is_draft = validated_data.pop('is_draft', False)
         asset = super().update(instance, validated_data)
 
-        # Handle commission and decommission status changes
-        commission = validated_data.pop('commission', None)
-        decommission = validated_data.pop('decommission', None)
-
-        if commission:
-            self.change_asset_status(instance, AssetStatus.ACTIVE, 'commission_date', commission)
-        if decommission:
-            self.change_asset_status(instance, AssetStatus.DECOMMISSIONED, 'decommission_date', decommission)
-
-        asset = super().update(instance, validated_data)
-
         if is_draft:
-            asset.status = AssetStatus.DRAFT  # Just set the status to DRAFT
+            asset.status = AssetStatus.INACTIVE  # Maintain as inactive for drafts
         else:
-            asset.status = AssetStatus.ACTIVE  # Set to active or another status
+            asset.status = AssetStatus.ACTIVE
 
         asset.save()
         return asset
+
 
     def validate(self, data):
         """
         Custom validation to prevent conflicting actions such as 
         commissioning and decommissioning at the same time.
         """
-        if 'commission' in data and 'decommission' in data:
+        if self.instance and self.instance.is_draft:
+            if 'commission' in data or 'decommission' in data:
+                raise ValidationError("Cannot commission or decommission a draft asset.")
+        elif 'commission' in data and 'decommission' in data:
             raise ValidationError("Cannot commission and decommission an asset simultaneously.")
         return data
 

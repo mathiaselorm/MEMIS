@@ -59,6 +59,14 @@ class Department(DirtyFieldsMixin, models.Model):
         return self.assets.filter(status='decommissioned').count()
     
 
+def upload_asset_image(instance, filename):
+    """
+    Uploads a product image to a path that includes the department and asset names.
+    """
+    return f'Assets/{slugify(instance.department.name)}/{slugify(instance.name)}/{filename}'
+
+
+
 class Asset(DirtyFieldsMixin, models.Model):  # Include DirtyFieldsMixin
     name = models.CharField(max_length=255)
     device_type = models.CharField(max_length=255, null=True, blank=True)
@@ -72,7 +80,7 @@ class Asset(DirtyFieldsMixin, models.Model):  # Include DirtyFieldsMixin
     embossment_date = models.DateField(null=True, blank=True)
     manufacturing_date = models.DateField(null=True, blank=True)
     description = models.TextField()
-    image = models.ImageField(upload_to='assets/', null=True, blank=True)
+    image = models.ImageField(upload_to=upload_asset_image, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     commission_date = models.DateField(null=True, blank=True)
