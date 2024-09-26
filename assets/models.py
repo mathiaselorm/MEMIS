@@ -94,7 +94,8 @@ class Asset(DirtyFieldsMixin, models.Model):  # Include DirtyFieldsMixin
     history = AuditlogHistoryField()
 
     def __str__(self):
-        return self.name
+        return self.name or "Unnamed Asset"
+
 
     def change_status(self, new_status, reason=''):
         if not self.is_draft:  # Only change status if not in draft
@@ -125,7 +126,8 @@ class ActionLog(models.Model):
     reason = models.TextField(help_text=_("The reason for the change."), blank=True)
 
     def __str__(self):
-        return f"{self.action} on {self.timestamp} by {self.performed_by or 'Unknown'}"
+        return f"{self.action} on {self.timestamp} by {self.performed_by.username if self.performed_by else 'Unknown'}"
+
 
 
 # Register models with auditlog
