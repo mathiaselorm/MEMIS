@@ -65,7 +65,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
 class AssetSerializer(serializers.ModelSerializer):
     department = serializers.SerializerMethodField()  
     added_by = serializers.SerializerMethodField()
-    image = serializers.ImageField(max_length=None, allow_empty_file=True, use_url=True)
+    image = serializers.ImageField(max_length=None, allow_empty_file=True, use_url=True, required=False)
 
     class Meta:
         model = Asset
