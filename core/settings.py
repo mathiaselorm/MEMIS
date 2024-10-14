@@ -22,7 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 import os
 import environ
-from decouple import config
+#from decouple import config
 
 
 # Initialise environment variables
@@ -119,7 +119,7 @@ REST_FRAMEWORK = {
 
 
 
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.RawMediaCloudinaryStorage'
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 MEDIA_URL = 'https://res.cloudinary.com/dr8uzgh5e/image/upload/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 

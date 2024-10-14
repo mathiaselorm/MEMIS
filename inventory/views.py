@@ -1,11 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework import generics, filters
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework import status
-from .models import *
-from .serializers import *
+from .models import Category, Supplier, Item
+from .serializers import CategorySerializer, SupplierSerializer, ItemSerializer
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from .utils import get_object_by_id_or_slug
@@ -13,23 +12,19 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
 
-
-
+# --------- CATEGORY VIEWS --------- #
 class CategoryList(APIView):
     """
     List all categories or create a new category.
     Only non-deleted categories are listed.
     """
-    
+
     @swagger_auto_schema(
         operation_description="Retrieve a list of all non-deleted categories.",
         responses={
             200: openapi.Response(
                 description="A list of categories retrieved successfully.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_ARRAY,
-                    items=openapi.Schema(type=openapi.TYPE_OBJECT, ref='#/definitions/Category')
-                )
+                schema=CategorySerializer(many=True)
             )
         }
     )
@@ -55,7 +50,7 @@ class CategoryList(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
 
 class CategoryDetail(APIView):
     """
@@ -76,21 +71,9 @@ class CategoryDetail(APIView):
                 schema=CategorySerializer()
             ),
             404: "Category not found."
-        },
-        manual_parameters=[
-            openapi.Parameter(
-                'identifier',
-                in_=openapi.IN_PATH,
-                description="ID or slug of the category to retrieve",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ]
+        }
     )
     def get(self, request, identifier, format=None):
-        """
-        Retrieve category by ID or slug.
-        """
         category = self.get_object(identifier)
         serializer = CategorySerializer(category, context={'request': request})
         return Response(serializer.data)
@@ -105,68 +88,124 @@ class CategoryDetail(APIView):
             ),
             400: "Invalid data provided.",
             404: "Category not found."
-        },
-        manual_parameters=[
-            openapi.Parameter(
-                'identifier',
-                in_=openapi.IN_PATH,
-                description="ID or slug of the category to update",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ]
+        }
     )
     def put(self, request, identifier, format=None):
-        """
-        Update category by ID or slug.
-        """
         category = self.get_object(identifier)
         serializer = CategorySerializer(category, data=request.data, context={'request': request})
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
     @swagger_auto_schema(
         operation_description="Soft delete a category by ID or slug.",
-        responses={
-            204: "Category soft-deleted successfully.",
-            404: "Category not found."
-        },
-        manual_parameters=[
-            openapi.Parameter(
-                'identifier',
-                in_=openapi.IN_PATH,
-                description="ID or slug of the category to delete",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ]
+        responses={204: "Category soft-deleted successfully.", 404: "Category not found."}
     )
     def delete(self, request, identifier, format=None):
-        """
-        Soft delete category by ID or slug.
-        """
         category = self.get_object(identifier)
-        category.delete()  # Soft-delete
+        category.delete()  # Soft delete
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
-    
-class ItemPagination(PageNumberPagination):
-    """
-    Custom pagination class for items.
-    """
-    page_size = 10  # Default items per page
-    page_size_query_param = 'page_size'
-    max_page_size = 100  # Max items per page
 
-class CategoryItemsList(generics.ListAPIView):
+
+# --------- ITEM VIEWS --------- #
+class ItemList(generics.ListCreateAPIView):
     """
-    List all items within a category with pagination, filtering, search, and sorting.
-    Supports both slug and ID to identify the category.
+    List all items or create a new item.
+    Supports filtering, search, and sorting. Only non-deleted items are listed.
     """
     serializer_class = ItemSerializer
-    pagination_class = ItemPagination
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['descriptive_name', 'part_number']  # Fields to search by
+    filterset_fields = ['location', 'supplier', 'category']  # Fields to filter by
+    ordering_fields = ['current_stock', 'descriptive_name', 'created_at']  # Fields to order by
+    ordering = ['descriptive_name']  # Default ordering
+
+    def get_queryset(self):
+        queryset = Item.objects.filter(is_deleted=False)
+        stock_status = self.request.query_params.get('stock_status')
+        if stock_status:
+            return queryset.filter(stock_status=stock_status)
+        return queryset
+
+    @swagger_auto_schema(
+        operation_description="List all non-deleted items with options for filtering, search, and sorting.",
+        manual_parameters=[
+            openapi.Parameter('stock_status', in_=openapi.IN_QUERY, description="Filter items by stock status.", type=openapi.TYPE_STRING)
+        ],
+        responses={200: openapi.Response(description="List of items", schema=ItemSerializer(many=True))}
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Create a new item.",
+        request_body=ItemSerializer(),
+        responses={
+            201: openapi.Response(description="Item created successfully.", schema=ItemSerializer()),
+            400: "Invalid data provided."
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+
+class ItemDetail(APIView):
+    """
+    Retrieve, update, or delete an item instance. Soft-deleted items are not retrievable.
+    """
+
+    def get_object(self, pk):
+        try:
+            return Item.objects.get(pk=pk, is_deleted=False)
+        except Item.DoesNotExist:
+            raise Http404
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a specific item by its ID.",
+        responses={
+            200: openapi.Response(description="Item retrieved successfully.", schema=ItemSerializer()),
+            404: "Item not found."
+        }
+    )
+    def get(self, request, pk, format=None):
+        item = self.get_object(pk)
+        serializer = ItemSerializer(item, context={'request': request})
+        return Response(serializer.data)
+
+    @swagger_auto_schema(
+        operation_description="Update an item by its ID.",
+        request_body=ItemSerializer(),
+        responses={
+            200: openapi.Response(description="Item updated successfully.", schema=ItemSerializer()),
+            400: "Invalid data provided.",
+            404: "Item not found."
+        }
+    )
+    def put(self, request, pk, format=None):
+        item = self.get_object(pk)
+        serializer = ItemSerializer(item, data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @swagger_auto_schema(
+        operation_description="Delete an item by its ID, triggering a soft-delete mechanism.",
+        responses={204: "Item deleted successfully.", 404: "Item not found."}
+    )
+    def delete(self, request, pk, format=None):
+        item = self.get_object(pk)
+        item.delete()  # This triggers the soft-delete mechanism
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --------- CATEGORY ITEM VIEWS --------- #
+class CategoryItemsList(generics.ListAPIView):
+    """
+    List all items within a category. Supports both slug and ID to identify the category.
+    """
+    serializer_class = ItemSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['descriptive_name', 'item_id', 'part_number']  # Fields to search by
     filterset_fields = ['location', 'supplier', 'category']  # Fields to filter by
@@ -174,9 +213,6 @@ class CategoryItemsList(generics.ListAPIView):
     ordering = ['created_at']  # Default ordering
 
     def get_queryset(self):
-        """
-        Override to return items in the specified category (by slug or ID).
-        """
         identifier = self.kwargs['identifier']
         category = get_object_by_id_or_slug(Category, identifier, id_field='id', slug_field='slug')
         return Item.objects.filter(category=category, is_deleted=False)
@@ -184,49 +220,21 @@ class CategoryItemsList(generics.ListAPIView):
     @swagger_auto_schema(
         operation_description="List all items within a specific category identified by slug or ID.",
         manual_parameters=[
-            openapi.Parameter(
-                'identifier',
-                openapi.IN_PATH,
-                description="ID or slug of the category",
-                type=openapi.TYPE_STRING,
-                required=True
-            ),
-            openapi.Parameter(
-                'search',
-                openapi.IN_QUERY,
-                description="Search across descriptive name, item ID, and part number",
-                type=openapi.TYPE_STRING
-            ),
-            openapi.Parameter(
-                'filter',
-                openapi.IN_QUERY,
-                description="Filter by location, supplier, or category",
-                type=openapi.TYPE_STRING
-            ),
-            openapi.Parameter(
-                'ordering',
-                openapi.IN_QUERY,
-                description="Order by current stock, descriptive name, or creation date",
-                type=openapi.TYPE_STRING
-            )
+            openapi.Parameter('identifier', openapi.IN_PATH, description="ID or slug of the category", type=openapi.TYPE_STRING, required=True)
         ],
-        responses={
-            200: openapi.Response(
-                description="A list of items within the category, with pagination and optional filtering, searching, and sorting.",
-                schema=CategorySerializer()
-            )
-        }
+        responses={200: openapi.Response(description="A list of items within the category.", schema=ItemSerializer(many=True))}
     )
     def get(self, request, *args, **kwargs):
-        """ This method is intentionally left with its default behavior """
         return super().get(request, *args, **kwargs)
 
 
+# --------- SUPPLIER VIEWS --------- #
 class SupplierList(APIView):
     """
     List all suppliers or create a new supplier.
     Only non-deleted suppliers are listed.
     """
+
     def get(self, request, format=None):
         suppliers = Supplier.objects.filter(is_deleted=False)
         serializer = SupplierSerializer(suppliers, many=True, context={'request': request})
@@ -252,39 +260,22 @@ class SupplierDetail(APIView):
             raise Http404
 
     @swagger_auto_schema(
-        operation_description="Retrieve a supplier along with paginated items supplied by them.",
+        operation_description="Retrieve a supplier along with all items supplied by them.",
         responses={
-            200: openapi.Response(
-                description="Supplier details retrieved successfully.",
-                schema=SupplierSerializer()
-            ),
+            200: openapi.Response(description="Supplier details retrieved successfully.", schema=SupplierSerializer()),
             404: "Supplier not found."
         }
     )
     def get(self, request, pk, format=None):
-        supplier = get_object_or_404(Supplier, pk=pk)
-        paginator = PageNumberPagination()
-        
-        supplied_items = supplier.items.all()
-        page = paginator.paginate_queryset(supplied_items, request)
-        
+        supplier = self.get_object(pk)
         serializer = SupplierSerializer(supplier, context={'request': request})
-        
-        return Response({
-            'supplier': serializer.data,
-            'count': paginator.page.paginator.count,
-            'next': paginator.get_next_link(),
-            'previous': paginator.get_previous_link(),
-        })
+        return Response(serializer.data)
 
     @swagger_auto_schema(
         operation_description="Update a supplier's details.",
         request_body=SupplierSerializer(),
         responses={
-            200: openapi.Response(
-                description="Supplier updated successfully.",
-                schema=SupplierSerializer()
-            ),
+            200: openapi.Response(description="Supplier updated successfully.", schema=SupplierSerializer()),
             400: "Invalid data provided.",
             404: "Supplier not found."
         }
@@ -299,136 +290,9 @@ class SupplierDetail(APIView):
 
     @swagger_auto_schema(
         operation_description="Soft delete a supplier instance.",
-        responses={
-            204: "Supplier soft-deleted successfully.",
-            404: "Supplier not found."
-        }
+        responses={204: "Supplier soft-deleted successfully.", 404: "Supplier not found."}
     )
     def delete(self, request, pk, format=None):
         supplier = self.get_object(pk)
         supplier.delete()  # This triggers the soft delete mechanism
-        return Response(status=status.HTTP_204_NO_CONTENT)    
-
-
-class ItemList(generics.ListCreateAPIView):
-    """
-    List all items or create a new item.
-    Supports pagination, filtering, search, and sorting.
-    Only non-deleted items are listed.
-    """
-    serializer_class = ItemSerializer
-    pagination_class = ItemPagination
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['descriptive_name', 'part_number']  # Fields to search by
-    filterset_fields = ['location', 'supplier', 'category']  # Fields to filter by
-    ordering_fields = ['current_stock', 'descriptive_name', 'created_at']  # Fields to order by
-    ordering = ['descriptive_name']  # Default ordering
-
-    def get_queryset(self):
-        queryset = Item.objects.filter(is_deleted=False)
-        stock_status = self.request.query_params.get('stock_status')
-        
-        if stock_status:
-            return queryset.filter(stock_status=stock_status)
-        return queryset
-
-    @swagger_auto_schema(
-        operation_description="List all non-deleted items with options for pagination, filtering, search, and sorting.",
-        manual_parameters=[
-            openapi.Parameter(
-                'stock_status',
-                in_=openapi.IN_QUERY,
-                description="Filter items by stock status ('in_stock', 'out_of_stock', 'archived')",
-                type=openapi.TYPE_STRING
-            ),
-            # Add other parameters here for search and ordering if needed
-        ],
-        responses={
-            200: openapi.Response(
-                description="List of items",
-                schema=ItemSerializer()
-            )
-        }
-    )
-    def get(self, request, *args, **kwargs):
-        """
-        Overridden to add custom Swagger documentation.
-        """
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        operation_description="Create a new item.",
-        request_body=ItemSerializer(),
-        responses={
-            201: openapi.Response(
-                description="Item created successfully.",
-                schema=ItemSerializer()
-            ),
-            400: "Invalid data provided."
-        }
-    )
-    def post(self, request, *args, **kwargs):
-        """
-        Overridden to add custom Swagger documentation.
-        """
-        return super().post(request, *args, **kwargs)
-    
-    
-
-class ItemDetail(APIView):
-    """
-    Retrieve, update, or delete an item instance. Soft-deleted items are not retrievable.
-    """
-
-    def get_object(self, pk):
-        try:
-            return Item.objects.get(pk=pk, is_deleted=False)
-        except Item.DoesNotExist:
-            raise Http404
-
-    @swagger_auto_schema(
-        operation_description="Retrieve a specific item by its ID.",
-        responses={
-            200: openapi.Response(
-                description="Item retrieved successfully.",
-                schema=ItemSerializer()
-            ),
-            404: "Item not found."
-        }
-    )
-    def get(self, request, pk, format=None):
-        item = self.get_object(pk)
-        serializer = ItemSerializer(item, context={'request': request})
-        return Response(serializer.data)
-
-    @swagger_auto_schema(
-        operation_description="Update an item by its ID.",
-        request_body=ItemSerializer(),
-        responses={
-            200: openapi.Response(
-                description="Item updated successfully.",
-                schema=ItemSerializer()
-            ),
-            400: "Invalid data provided.",
-            404: "Item not found."
-        }
-    )
-    def put(self, request, pk, format=None):
-        item = self.get_object(pk)
-        serializer = ItemSerializer(item, data=request.data, context={'request': request})
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    @swagger_auto_schema(
-        operation_description="Delete an item by its ID, triggering a soft-delete mechanism.",
-        responses={
-            204: "Item deleted successfully.",
-            404: "Item not found."
-        }
-    )
-    def delete(self, request, pk, format=None):
-        item = self.get_object(pk)
-        item.delete()  # This triggers the soft-delete mechanism
         return Response(status=status.HTTP_204_NO_CONTENT)

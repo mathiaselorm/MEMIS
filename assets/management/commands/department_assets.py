@@ -14,7 +14,7 @@ class Command(BaseCommand):
 
         # Fetch the predefined departments from the database
         departments = Department.objects.filter(name__in=[
-            "Cardiology", "Pediatrics", "Emergency", "Radiology", "Gynecology"
+            "Urology", "Pathology", "Orthopedics", "Oncology", "Neurology"
         ])
 
         # Fetch the user with the specific email to use as 'added_by'
@@ -26,27 +26,42 @@ class Command(BaseCommand):
 
         # Predefined medical equipment for assets with department
         medical_equipment = [
-            {"name": "Automated External Defibrillator (AED)", "device_type": "Cardiac Care", "department": "Cardiology"},
-            {"name": "Bone Densitometer", "device_type": "Diagnostic Imaging", "department": "Radiology"},
-            {"name": "Colposcope", "device_type": "Gynecological Care", "department": "Gynecology"},
-            {"name": "Endoscope", "device_type": "Surgical", "department": "Surgery"},
-            {"name": "Oxygen Cylinder", "device_type": "Respiratory Support", "department": "Emergency"},
-            {"name": "Electrosurgical Unit", "device_type": "Surgical", "department": "Surgery"},
-            {"name": "Fetal Doppler", "device_type": "Monitoring", "department": "Pediatrics"},
-            {"name": "Incubation Warmer", "device_type": "Neonatal Care", "department": "Pediatrics"},
-            {"name": "Phototherapy Unit", "device_type": "Neonatal Care", "department": "Pediatrics"},
-            {"name": "Laryngoscope", "device_type": "Anesthesia", "department": "Surgery"},
-            {"name": "Mechanical Ventilator", "device_type": "Respiratory Support", "department": "Emergency"},
-            {"name": "Nebulizer", "device_type": "Respiratory Support", "department": "Emergency"},
-            {"name": "Orthopedic Drill", "device_type": "Orthopedics", "department": "Orthopedics"},
-            {"name": "Patient Lift", "device_type": "Mobility Aid", "department": "Orthopedics"},
-            {"name": "Portable X-Ray Machine", "device_type": "Diagnostic Imaging", "department": "Radiology"},
-            {"name": "Pulse Oximeter", "device_type": "Monitoring", "department": "Emergency"},
-            {"name": "Sphygmomanometer", "device_type": "Monitoring", "department": "Pediatrics"},
-            {"name": "Suction Machine", "device_type": "Surgical", "department": "Surgery"},
-            {"name": "Traction Bed", "device_type": "Orthopedics", "department": "Orthopedics"},
-            {"name": "Wound VAC", "device_type": "Wound Care", "department": "Surgery"}
+            # Urology Department Assets
+            {"name": "Urodynamic System", "device_type": "Diagnostic Equipment", "department": "Urology"},
+            {"name": "Cystoscope", "device_type": "Endoscopic Device", "department": "Urology"},
+            {"name": "Lithotripter", "device_type": "Therapeutic Device", "department": "Urology"},
+            {"name": "Dialysis Machine", "device_type": "Renal Care", "department": "Urology"},
+            {"name": "Bladder Scanner", "device_type": "Diagnostic Imaging", "department": "Urology"},
+            
+            # Pathology Department Assets
+            {"name": "Tissue Processor", "device_type": "Lab Equipment", "department": "Pathology"},
+            {"name": "Cryostat", "device_type": "Lab Equipment", "department": "Pathology"},
+            {"name": "Hematology Analyzer", "device_type": "Diagnostic Lab Equipment", "department": "Pathology"},
+            {"name": "Microtome", "device_type": "Lab Equipment", "department": "Pathology"},
+            {"name": "Centrifuge", "device_type": "Lab Equipment", "department": "Pathology"},
+
+            # Orthopedics Department Assets
+            {"name": "Bone Saw", "device_type": "Surgical Tool", "department": "Orthopedics"},
+            {"name": "Orthopedic Power Drill", "device_type": "Surgical Tool", "department": "Orthopedics"},
+            {"name": "Traction Splint", "device_type": "Orthopedic Device", "department": "Orthopedics"},
+            {"name": "Joint Replacement Kit", "device_type": "Surgical Kit", "department": "Orthopedics"},
+            {"name": "Casting Machine", "device_type": "Therapeutic Device", "department": "Orthopedics"},
+
+            # Oncology Department Assets
+            {"name": "Radiotherapy Machine", "device_type": "Therapeutic Device", "department": "Oncology"},
+            {"name": "Infusion Pump", "device_type": "Infusion Device", "department": "Oncology"},
+            {"name": "Chemotherapy Hood", "device_type": "Protective Equipment", "department": "Oncology"},
+            {"name": "Gamma Knife", "device_type": "Stereotactic Radiosurgery", "department": "Oncology"},
+            {"name": "Linear Accelerator", "device_type": "Radiotherapy", "department": "Oncology"},
+
+            # Neurology Department Assets
+            {"name": "EEG Machine", "device_type": "Diagnostic Equipment", "department": "Neurology"},
+            {"name": "EMG Machine", "device_type": "Diagnostic Equipment", "department": "Neurology"},
+            {"name": "Nerve Stimulator", "device_type": "Therapeutic Device", "department": "Neurology"},
+            {"name": "TMS Machine", "device_type": "Neurostimulation", "department": "Neurology"},
+            {"name": "Neurological Hammer", "device_type": "Diagnostic Tool", "department": "Neurology"}
         ]
+
 
         # Verify that the predefined departments are in the database
         if len(departments) != 5:

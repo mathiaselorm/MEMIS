@@ -1,28 +1,22 @@
 from rest_framework import serializers
 from .models import Category, Supplier, Item
 from django.core.exceptions import ValidationError
-from rest_framework.pagination import PageNumberPagination
 from simple_history.models import HistoricalRecords
-
-
 
 class ItemMinimalSerializer(serializers.ModelSerializer):
     """
     Minimal serializer for item representation in nested lists.
     """
-    
     category_name = serializers.ReadOnlyField(source='category.name')
     
     class Meta:
         model = Item
-        fields = ['item_id', 'descriptive_name', 'category_name', 'current_stock', 'stock_status'] 
+        fields = ['item_id', 'descriptive_name', 'category_name', 'current_stock', 'stock_status']
 
 
-# Serializer for handling historical records
 class HistoricalRecordSerializer(serializers.Serializer):
     """
-    Serializer for handling historical records. You can customize the fields that you
-    want to include from the history object.
+    Serializer for handling historical records.
     """
     history_id = serializers.IntegerField()
     history_date = serializers.DateTimeField()
@@ -32,13 +26,14 @@ class HistoricalRecordSerializer(serializers.Serializer):
 
     def get_changed_fields(self, obj):
         """
-        Optionally return the fields that changed in this historical record, if available.
+        Return the fields that changed in this historical record.
         """
         return list(obj.diff_against(obj.prev_record).changed_fields) if obj.prev_record else []
 
+
 class CategorySerializer(serializers.ModelSerializer):
     """
-    Serializer for Category model with history tracking.
+    Serializer for Category model with history and soft deletion support.
     """
     history = serializers.SerializerMethodField()
 
@@ -49,7 +44,7 @@ class CategorySerializer(serializers.ModelSerializer):
 
     def get_history(self, obj):
         """
-        Optionally include history in the serialization if requested by query parameters.
+        Include history in the serialization if requested by query parameters.
         """
         request = self.context.get('request', None)
         if request and 'include_history' in request.query_params:
@@ -58,10 +53,9 @@ class CategorySerializer(serializers.ModelSerializer):
         return None
 
 
-
 class SupplierSerializer(serializers.ModelSerializer):
     """
-    Serializer for Supplier model with contact details, item listing, and history tracking.
+    Serializer for Supplier model with item listing, contact details, and history.
     """
     supplied_items = serializers.SerializerMethodField()
     history = serializers.SerializerMethodField()
@@ -73,35 +67,21 @@ class SupplierSerializer(serializers.ModelSerializer):
 
     def get_supplied_items(self, obj):
         """
-        Manually paginate the items related to the supplier and return them directly as an array.
+        Return all items related to the supplier without pagination.
         """
         items = obj.items.all()  # Get all items related to the supplier
-        paginator = PageNumberPagination()
-        
-        # Safely access 'request' from context and paginate items
-        request = self.context.get('request')
-        
-        if request:
-            page = paginator.paginate_queryset(items, request)
-            
-            # Serialize the paginated items
-            serializer = ItemMinimalSerializer(page, many=True, context={'request': request})
-            
-            return serializer.data  # Return items directly as a list
-
-        return []  # Return an empty list if 'request' is not in contextt
+        return ItemMinimalSerializer(items, many=True).data
 
     def get_history(self, obj):
         """
-        Optionally include history in the serialization if requested by query parameters.
+        Include history in the serialization if requested by query parameters.
         """
         request = self.context.get('request', None)
         if request and 'include_history' in request.query_params:
             history = obj.history.all()
             return HistoricalRecordSerializer(history, many=True).data
         return None
-    
-    
+
 
 class ItemSerializer(serializers.ModelSerializer):
     """
@@ -109,7 +89,7 @@ class ItemSerializer(serializers.ModelSerializer):
     """
     category_name = serializers.ReadOnlyField(source='category.name')
     supplier_name = serializers.SerializerMethodField()
-    stock_status = serializers.ReadOnlyField()
+    stock_status = serializers.SerializerMethodField()  # Allow custom logic for stock status
     history = serializers.SerializerMethodField()
 
     class Meta:
@@ -126,6 +106,12 @@ class ItemSerializer(serializers.ModelSerializer):
         if obj.supplier:
             return obj.supplier.name
         return "Unknown"
+
+    def get_stock_status(self, obj):
+        """
+        Returns the stock status by reading the model property.
+        """
+        return obj.stock_status
 
     def validate_current_stock(self, value):
         """
