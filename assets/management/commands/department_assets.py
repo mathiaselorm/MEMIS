@@ -14,7 +14,7 @@ class Command(BaseCommand):
 
         # Fetch the predefined departments from the database
         departments = Department.objects.filter(name__in=[
-            "Cardiology", "Pediatrics", "Emergency", "Radiology", "Surgery"
+            "Cardiology", "Pediatrics", "Emergency", "Radiology", "Gynecology"
         ])
 
         # Fetch the user with the specific email to use as 'added_by'
