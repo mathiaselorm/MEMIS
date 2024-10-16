@@ -8,11 +8,11 @@ class IsAdminUser(permissions.BasePermission):
     Custom permission to allow only Admins and Superadmins to access specific views.
     """
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.user_type in [User.UserType.ADMIN, User.UserType.SUPERADMIN]
+        return request.user.is_authenticated and request.user.user_role in [User.UseRole.ADMIN, User.UseRole.SUPERADMIN]
 
 class IsTechnicianUser(permissions.BasePermission):
     """
     Custom permission to allow only Technicians to access specific views.
     """
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.user_type == User.UserType.TECHNICIAN
+        return request.user.is_authenticated and request.user.user_role == User.UserRole.TECHNICIAN

@@ -9,21 +9,21 @@ CustomUser = get_user_model()
 class CustomUserCreationForm(UserCreationForm):
     """
     A form for creating new users. Includes all the required
-    fields, plus user_type and a repeated password.
+    fields, plus user_role and a repeated password.
     """
     class Meta(UserCreationForm.Meta):
         model = CustomUser
-        fields = ('email', 'first_name', 'last_name', 'phone_number', 'user_type',)
+        fields = ('email', 'first_name', 'last_name', 'phone_number', 'user_role',)
         labels = {
             'email': _('Email Address'),
             'first_name': _('First Name'),
             'last_name': _('Last Name'),
             'phone_number': _('Phone Number'),
-            'user_type': _('User Type'),
+            'user_role': _('User Role'),
         }
         help_texts = {
             'email': _('A valid email address, please.'),
-            'user_type': _('Designates whether the user is an admin or technician.'),
+            'user_role': _('Designates whether the user is an admin or technician.'),
         }
 
     def clean_email(self):
@@ -44,8 +44,8 @@ class CustomUserCreationForm(UserCreationForm):
         user.set_password(self.cleaned_data["password1"])
 
         # Automatically set `user_type` for non-superusers
-        if self.cleaned_data.get('user_type') is None and not self.request.user.is_superuser:
-            user.user_type = 3  # Default to technician if created by an Admin
+        if self.cleaned_data.get('user_role') is None and not self.request.user.is_superuser:
+            user.user_role = 3  # Default to technician if created by an Admin
 
         if commit:
             user.save()
@@ -60,18 +60,18 @@ class CustomUserChangeForm(UserChangeForm):
     """
     class Meta(UserChangeForm.Meta):
         model = CustomUser
-        fields = ('email', 'first_name', 'last_name', 'phone_number', 'user_type', 'is_active', 'is_staff')
+        fields = ('email', 'first_name', 'last_name', 'phone_number', 'user_role', 'is_active', 'is_staff')
         labels = {
             'email': _('Email Address'),
             'first_name': _('First Name'),
             'last_name': _('Last Name'),
             'phone_number': _('Phone Number'),
-            'user_type': _('User Type'),
+            'user_role': _('User Role'),
             'is_active': _('Active'),
             'is_staff': _('Staff Status'),
         }
         help_texts = {
             'is_active': _('Designates whether this user should be treated as active. Unselect this instead of deleting accounts.'),
             'is_staff': _('Designates whether the user can log into this admin site.'),
-            'user_type': _('Designates whether the user is an admin or technician.'),
+            'user_role': _('Designates whether the user is an admin or technician.'),
         }

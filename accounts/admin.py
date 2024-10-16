@@ -11,8 +11,8 @@ class CustomUserAdmin(BaseUserAdmin):
     model = CustomUser
 
     # Fields displayed in the list view
-    list_display = ('id', 'first_name', 'last_name', 'email', 'phone_number', 'user_type', 'is_staff', 'is_active')
-    list_filter = ('user_type', 'is_staff', 'is_active')
+    list_display = ('id', 'first_name', 'last_name', 'email', 'phone_number', 'user_role', 'is_staff', 'is_active')
+    list_filter = ('user_role', 'is_staff', 'is_active')
     list_display_links = ('id', 'email')
 
     # Fields displayed when viewing/editing a user
@@ -26,7 +26,7 @@ class CustomUserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('first_name', 'last_name', 'email', 'phone_number', 'password1', 'password2', 'user_type', 'is_staff', 'is_active')
+            'fields': ('first_name', 'last_name', 'email', 'phone_number', 'password1', 'password2', 'user_role', 'is_staff', 'is_active')
         }),
     )
 

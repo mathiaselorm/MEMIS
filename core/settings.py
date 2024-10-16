@@ -11,8 +11,12 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
 
-
+from datetime import timedelta
 from pathlib import Path
+from decouple import config
+import cloudinary
+import cloudinary.uploader
+from cloudinary.utils import cloudinary_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -43,8 +47,8 @@ ALLOWED_HOSTS = ['*']
 EMAIL_BACKEND = 'accounts.utils.MailgunAPIBackend'
 
 # Mailgun API configuration
-MAILGUN_API_KEY = env('MAILGUN_API_KEY')
-MAILGUN_DOMAIN = env('MAILGUN_DOMAIN')
+MAILGUN_API_KEY = config('MAILGUN_API_KEY')
+MAILGUN_DOMAIN = config('MAILGUN_DOMAIN')
 
 # Default email settings
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='memis@melarc.me')
@@ -63,6 +67,7 @@ PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 
 CSRF_COOKIE_HTTPONLY = False  # Allows JavaScript to access the token
 CSRF_COOKIE_NAME = "csrftoken"  # Name of the CSRF token in cookies
+CSRF_COOKIE_SECURE = not DEBUG  # Set to True in production
 CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'https://your-frontend-url.com']  # Frontend URLs that Django trusts
 
 
@@ -81,6 +86,7 @@ INSTALLED_APPS = [
     'django_cleanup.apps.CleanupConfig',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
     'drf_yasg',
@@ -117,8 +123,23 @@ REST_FRAMEWORK = {
     #'PAGE_SIZE': 10,  # Default page size
 }
 
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": False,
+}
 
+# Cloudinary storage configuration using environment variables
+cloudinary.config(
+    cloud_name=config('CLOUDINARY_CLOUD_NAME'),
+    api_key=config('CLOUDINARY_API_KEY'),
+    api_secret=config('CLOUDINARY_API_SECRET'),
+    secure=True  # Ensure the connection is secure
+)
 
+# check
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 MEDIA_URL = 'https://res.cloudinary.com/dr8uzgh5e/image/upload/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
@@ -126,6 +147,8 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 ROOT_URLCONF = 'core.urls'
 
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
 
 TEMPLATES = [
     {

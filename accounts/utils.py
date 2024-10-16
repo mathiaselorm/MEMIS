@@ -19,7 +19,7 @@ class MailgunAPIBackend(BaseEmailBackend):
 
         for message in email_messages:
             response = self._send_email_via_mailgun(message)
-            if response and response.status_code == 200:
+            if response and response.status_code == 201:
                 sent_count += 1
             else:
                 logger.error(f"Failed to send email to {message.to}. Status code: {response.status_code if response else 'No Response'}")
