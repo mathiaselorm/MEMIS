@@ -87,9 +87,9 @@ class AuditLog(models.Model):
         ('revoke_role', 'Revoke Role'),
     )
 
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True)  # The user performing the action
     action = models.CharField(max_length=15, choices=ACTION_CHOICES)
-    target_user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='target_user', null=True, blank=True)  # Target user being acted on
+    target_user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, related_name='target_user', null=True, blank=True)  # Target user being acted on
     timestamp = models.DateTimeField(auto_now_add=True)
     details = models.TextField(null=True, blank=True)  # Optional details about the action
 

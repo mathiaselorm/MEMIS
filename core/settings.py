@@ -44,11 +44,11 @@ DEBUG = env('DEBUG', default=False)
 ALLOWED_HOSTS = ['*']
 
 
-EMAIL_BACKEND = 'accounts.utils.MailgunAPIBackend'
+EMAIL_BACKEND = 'accounts.utils.BrevoAPIBackend'
 
 # Mailgun API configuration
-MAILGUN_API_KEY = config('MAILGUN_API_KEY')
-MAILGUN_DOMAIN = config('MAILGUN_DOMAIN')
+BREVO_API_KEY = config('BREVO_API_KEY')
+BREVO_DOMAIN = config('BREVO_DOMAIN')
 
 # Default email settings
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='memis@melarc.me')
@@ -179,27 +179,42 @@ LOGGING = {
     },
     'handlers': {
         'file': {
-            'level': 'ERROR',
+            'level': 'DEBUG',  # Capture more details, including debug info
             'class': 'logging.handlers.RotatingFileHandler',
-            'filename': 'django_errors.log',
+            'filename': 'django_errors.log',  # Make sure this file is writable
+            'formatter': 'verbose',
+            'maxBytes': 1024 * 1024 * 5,  # 5MB log file
+            'backupCount': 3,
+        },
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
             'formatter': 'verbose',
         },
     },
-    'loggers': {
-        '': {  # This configures the root logger
-            'handlers': ['file'],
-            'level': 'ERROR',
-            'propagate': True,
-        },
+    'root': {  # Configure root logger to capture all logs
+        'handlers': ['file', 'console'],  # Output to both file and console
+        'level': 'DEBUG',  # Log all events down to DEBUG level
     },
     'loggers': {
-        'background_task': {
+        'django': {
+            'handlers': ['file', 'console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'django.db.backends': {  # Log database queries
             'handlers': ['file'],
             'level': 'DEBUG',
+            'propagate': False,
+        },
+        'background_task': {
+            'handlers': ['file'],
+            'level': 'DEBUG',  # Capture debug info for background tasks
             'propagate': True,
         },
     },
 }
+
 
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases

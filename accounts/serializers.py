@@ -117,6 +117,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
             )
 
+            logger.info(f"Sending welcome email to {user.email} with reset URL: {reset_url}")
+
             # Trigger email to set up the password
             send_welcome_email(user.email, user.pk, reset_url)
             
