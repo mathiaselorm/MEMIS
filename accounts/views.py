@@ -245,6 +245,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             tokens = response.data
             access_token = tokens.get('access')
             refresh_token = tokens.get('refresh')
+            csrf_token = get_token(request)
 
             # Ensure the tokens exist
             if not access_token or not refresh_token:
@@ -272,6 +273,14 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 max_age=refresh_token_lifetime,  # Expiration matches refresh token lifetime
             )
 
+            response.set_cookie(
+                key='csrftoken',
+                value=csrf_token,
+                httponly=False,  # Needs to be readable by the frontend
+                secure=secure_cookie,  # Set secure=True in production
+                samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
+                max_age=access_token_lifetime,  # Set cookie expiration to match access token
+            )
             
             return response
 
@@ -279,28 +288,41 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         return Response({"error": "Invalid credentials."}, status=response.status_code)
     
 
-class CustomTokenRefreshView(TokenRefreshView):
+class CustomTokenRefreshView(APIView):
     """
     API endpoint for refreshing JWT access tokens.
     Uses the refresh token stored in cookies to generate a new access token.
     """
+
     @swagger_auto_schema(
         operation_summary="Refresh JWT access token",
         operation_description="""
-        Use the refresh token stored in cookies to generate a new access token.
-        The new access token will be set in an HttpOnly cookie.
+        This API endpoint allows users to refresh their JWT access token using the refresh token stored in HttpOnly cookies.
+        The response will include:
+        
+        - A new access token (set in an HttpOnly cookie).
+        - A new CSRF token (sent in a readable cookie for frontend protection).
+        
+        No request body is required as the refresh token is retrieved from the cookies.
         """,
+        request_body=None,  # No request body required
         responses={
             200: openapi.Response(
-                description="New access token and refresh token set in HttpOnly cookies.",
+                description="Access token refreshed successfully. Tokens are set in HttpOnly cookies.",
                 examples={
                     "application/json": {
                         "message": "New access token set in HttpOnly cookie."
                     }
+                },
+                headers={
+                    "Set-Cookie": openapi.Schema(
+                        description="JWT Access token and CSRF token set in cookies.",
+                        type="string"
+                    )
                 }
             ),
             400: openapi.Response(
-                description="Bad Request - Refresh token not found in cookies.",
+                description="Refresh token not found or invalid.",
                 examples={
                     "application/json": {
                         "error": "Refresh token not found."
@@ -308,15 +330,15 @@ class CustomTokenRefreshView(TokenRefreshView):
                 }
             ),
             401: openapi.Response(
-                description="Unauthorized - Invalid or expired refresh token.",
+                description="Unauthorized. The refresh token may have expired or been blacklisted.",
                 examples={
                     "application/json": {
-                        "error": "Invalid or expired refresh token."
+                        "detail": "Token is invalid or expired."
                     }
                 }
             ),
         },
-        tags=["authentication"]
+        tags=['Authentication'],
     )
     def post(self, request, *args, **kwargs):
         # Get the refresh token from the cookies instead of the request body
@@ -326,53 +348,74 @@ class CustomTokenRefreshView(TokenRefreshView):
             return Response({"error": "Refresh token not found"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Validate the refresh token and create a new access token
+            # Validate refresh token
             refresh = RefreshToken(refresh_token)
 
-            # Generate new access token
-            new_access_token = str(refresh.access_token)
+            # Extract custom claims from refresh token payload
+            custom_claims = {key: value for key, value in refresh.payload.items() if key not in ['token_type', 'exp', 'iat', 'jti', 'user_id']}
 
-            # Prepare response
-            response = Response({"message": "New access token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
+            # Generate new access token
+            new_access_token = refresh.access_token
+
+            # Update new_access_token payload with custom claims
+            if hasattr(new_access_token, 'payload'):
+                for key, value in custom_claims.items():
+                    new_access_token.payload[key] = value
 
             # Handle refresh token rotation if enabled
             if api_settings.ROTATE_REFRESH_TOKENS:
-                # Generate a new refresh token
-                new_refresh_token = str(RefreshToken())
+                # Generate new refresh token
+                new_refresh_token = RefreshToken()
 
-                # Set the new refresh token in an HttpOnly cookie
+                # Update new_refresh_token payload with custom claims
+                if hasattr(new_refresh_token, 'payload'):
+                    for key, value in custom_claims.items():
+                        new_refresh_token.payload[key] = value
+
+                # Convert new_refresh_token to string
+                new_refresh_token = str(new_refresh_token.token)
+
+                # Prepare response with new tokens
                 response = Response({"message": "New access token and refresh token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
                 response.set_cookie(
                     key='refresh_token',
                     value=new_refresh_token,
                     httponly=True,
-                    secure=secure_cookie,  # Set secure=True in production
-                    samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-                    max_age=refresh_token_lifetime,  # Set cookie expiration to match refresh token
-
+                    secure=secure_cookie,  
+                    samesite='Lax' if settings.DEBUG else 'None',  
+                    max_age=refresh_token_lifetime,  
                 )
-
-                # Blacklist the old refresh token if configured
-                if api_settings.BLACKLIST_AFTER_ROTATION:
-                    refresh.blacklist()
-
             else:
                 response = Response({"message": "New access token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
 
             # Set the new access token in an HttpOnly cookie
             response.set_cookie(
                 key='access_token',
-                value=new_access_token,
+                value=new_access_token.token,
                 httponly=True,
-                secure=secure_cookie,  # Set secure=True in production
+                secure=secure_cookie,  
+                samesite='Lax' if settings.DEBUG else 'None',  
+                max_age=access_token_lifetime,  
+            )
+
+            # Generate and set a new CSRF token
+            csrf_token = get_token(request)
+            response.set_cookie(
+                key='csrftoken',
+                value=csrf_token,
+                httponly=False,  # Needs to be readable by the frontend
+                 secure=secure_cookie,  # Set secure=True in production
                 samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
                 max_age=access_token_lifetime,  # Set cookie expiration to match access token
             )
 
-            
+            if api_settings.BLACKLIST_AFTER_ROTATION:
+                # Blacklist the old refresh token now that new ones are securely sent to the client
+                refresh.blacklist()
+                
             if settings.DEBUG:
-                response.data['access_token'] = new_access_token
-            
+                response.data['access_token'] = new_access_token.token
+
             return response
 
         except Exception as e:
@@ -490,7 +533,7 @@ class PasswordResetRequestView(views.APIView):
             
                 try:
                     # Offload email sending to background or send synchronously
-                    send_password_reset_email.delay(user.id, reset_url)
+                    send_password_reset_email(user.id, reset_url)
                 except Exception as e:
                     logger.error(f"Failed to send email: {e}")
                     return Response({"error": "Failed to send password reset email."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

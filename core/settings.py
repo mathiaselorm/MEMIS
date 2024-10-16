@@ -68,7 +68,7 @@ PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 CSRF_COOKIE_HTTPONLY = False  # Allows JavaScript to access the token
 CSRF_COOKIE_NAME = "csrftoken"  # Name of the CSRF token in cookies
 CSRF_COOKIE_SECURE = not DEBUG  # Set to True in production
-CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'https://your-frontend-url.com']  # Frontend URLs that Django trusts
+CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']  # Frontend URLs that Django trusts
 
 
 # Application definition
@@ -168,52 +168,53 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {message}',
-            'style': '{',
-        },
-    },
-    'handlers': {
-        'file': {
-            'level': 'DEBUG',  # Capture more details, including debug info
-            'class': 'logging.handlers.RotatingFileHandler',
-            'filename': 'django_errors.log',  # Make sure this file is writable
-            'formatter': 'verbose',
-            'maxBytes': 1024 * 1024 * 5,  # 5MB log file
-            'backupCount': 3,
-        },
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-            'formatter': 'verbose',
-        },
-    },
-    'root': {  # Configure root logger to capture all logs
-        'handlers': ['file', 'console'],  # Output to both file and console
-        'level': 'DEBUG',  # Log all events down to DEBUG level
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['file', 'console'],
-            'level': 'DEBUG',
-            'propagate': True,
-        },
-        'django.db.backends': {  # Log database queries
-            'handlers': ['file'],
-            'level': 'DEBUG',
-            'propagate': False,
-        },
-        'background_task': {
-            'handlers': ['file'],
-            'level': 'DEBUG',  # Capture debug info for background tasks
-            'propagate': True,
-        },
-    },
-}
+# LOGGING = {
+#     'version': 1,
+#     'disable_existing_loggers': False,
+#     'formatters': {
+#         'verbose': {
+#             'format': '{levelname} {asctime} {module} {message}',
+#             'style': '{',
+#         },
+#     },
+#     'handlers': {
+#         'file': {
+#             'level': 'DEBUG',  # Capture more details, including debug info
+#             'class': 'logging.handlers.RotatingFileHandler',
+#             'filename': 'django_errors.log',  # Make sure this file is writable
+#             'formatter': 'verbose',
+#             'maxBytes': 1024 * 1024 * 5,  # 5MB log file
+#             'backupCount': 3,
+#         },
+#         'console': {
+#             'level': 'DEBUG',
+#             'class': 'logging.StreamHandler',
+#             'formatter': 'verbose',
+#         },
+#     },
+#     'root': {  # Configure root logger to capture all logs
+#         'handlers': ['file', 'console'],  # Output to both file and console
+#         'level': 'DEBUG',  # Log all events down to DEBUG level
+#     },
+#     'loggers': {
+#         'django': {
+#             'handlers': ['file', 'console'],
+#             'level': 'DEBUG',
+#             'propagate': True,
+#         },
+#         'django.db.backends': {  # Log database queries
+#             'handlers': ['file'],
+#             'level': 'DEBUG',
+#             'propagate': False,
+#         },
+#         'background_task': {
+#             'handlers': ['file'],
+#             'level': 'DEBUG',  # Capture debug info for background tasks
+#             'propagate': True,
+#         },
+#     },
+# }
+
 
 
 # Database
@@ -273,3 +274,57 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
+
+
+
+
+
+
+
+
+# LOGGING = {
+#     'version': 1,
+#     'disable_existing_loggers': False,
+#     'formatters': {
+#         'verbose': {
+#             'format': '{levelname} {asctime} {module} {message}',
+#             'style': '{',
+#         },
+#     },
+#     'handlers': {
+#         'file': {
+#             'level': 'DEBUG',  # Capture more details, including debug info
+#             'class': 'logging.handlers.RotatingFileHandler',
+#             'filename': 'django_errors.log',  # Make sure this file is writable
+#             'formatter': 'verbose',
+#             'maxBytes': 1024 * 1024 * 5,  # 5MB log file
+#             'backupCount': 3,
+#         },
+#         'console': {
+#             'level': 'DEBUG',
+#             'class': 'logging.StreamHandler',
+#             'formatter': 'verbose',
+#         },
+#     },
+#     'root': {  # Configure root logger to capture all logs
+#         'handlers': ['file', 'console'],  # Output to both file and console
+#         'level': 'DEBUG',  # Log all events down to DEBUG level
+#     },
+#     'loggers': {
+#         'django': {
+#             'handlers': ['file', 'console'],
+#             'level': 'DEBUG',
+#             'propagate': True,
+#         },
+#         'django.db.backends': {  # Log database queries
+#             'handlers': ['file'],
+#             'level': 'DEBUG',
+#             'propagate': False,
+#         },
+#         'background_task': {
+#             'handlers': ['file'],
+#             'level': 'DEBUG',  # Capture debug info for background tasks
+#             'propagate': True,
+#         },
+#     },
+# }

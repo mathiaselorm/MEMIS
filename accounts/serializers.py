@@ -3,7 +3,9 @@ from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from django.core.exceptions import ValidationError
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.settings import api_settings
 from .models import AuditLog
 from .tasks import send_welcome_email
 
@@ -144,10 +146,43 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['last_name'] = user.last_name
         token['email'] = user.email
         token['user_role'] = user.get_user_role_display()  # Include role display
-        token['phone_number'] = user.phone_number
-
+        
         return token
+    
 
+# class CustomTokenRefreshSerializer(TokenRefreshSerializer):
+#     def validate(self, attrs):
+#         # Validate the refresh token and generate a new access token
+#         data = super().validate(attrs)
+
+#         refresh = RefreshToken(attrs['refresh'])
+
+#         # Fetch the user from the refresh token's payload
+#         user_id = refresh['user_id']
+#         try:
+#             user = User.objects.get(id=user_id)
+#         except User.DoesNotExist:
+#             logger.error(f"User with id {user_id} not found during token refresh.")
+#             raise serializers.ValidationError("User not found")
+
+#         # Add custom claims to the new access token
+#         access_token = refresh.access_token
+#         access_token['first_name'] = user.first_name
+#         access_token['last_name'] = user.last_name
+#         access_token['email'] = user.email
+#         access_token['user_role'] = user.user_role
+
+#         # Handle refresh token rotation
+#         if api_settings.ROTATE_REFRESH_TOKENS:
+#             # Generate a new refresh token
+#             refresh.set_jti()  # Sets a new unique ID for the refresh token
+#             refresh.set_exp()  # Resets the expiration time
+#             data['refresh'] = str(refresh)
+            
+#         # Return the new access token with custom claims
+#         data['access'] = str(access_token)
+
+#         return data
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
