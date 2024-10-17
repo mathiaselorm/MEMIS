@@ -341,61 +341,61 @@ class CustomTokenRefreshView(APIView):
         tags=['Authentication'],
     )
     def post(self, request, *args, **kwargs):
-        # Get the refresh token from the cookies instead of the request body
+        # Get the refresh token from the cookies
         refresh_token = request.COOKIES.get('refresh_token')
+        secure_cookie = not settings.DEBUG  # Set secure=True in production
 
         if not refresh_token:
             return Response({"error": "Refresh token not found"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Validate refresh token
+            # Validate the refresh token
             refresh = RefreshToken(refresh_token)
 
-            # Extract custom claims from refresh token payload
-            custom_claims = {key: value for key, value in refresh.payload.items() if key not in ['token_type', 'exp', 'iat', 'jti', 'user_id']}
+            # Extract custom claims from refresh token payload, excluding standard claims
+            custom_claims = {key: value for key, value in refresh.payload.items() 
+                             if key not in ['token_type', 'exp', 'iat', 'jti']}
 
-            # Generate new access token
+            # Generate a new access token
             new_access_token = refresh.access_token
 
-            # Update new_access_token payload with custom claims
-            if hasattr(new_access_token, 'payload'):
-                for key, value in custom_claims.items():
-                    new_access_token.payload[key] = value
+            # Add custom claims to the new access token
+            for key, value in custom_claims.items():
+                new_access_token[key] = value
 
             # Handle refresh token rotation if enabled
             if api_settings.ROTATE_REFRESH_TOKENS:
-                # Generate new refresh token
+                # Generate a new refresh token
                 new_refresh_token = RefreshToken()
 
-                # Update new_refresh_token payload with custom claims
-                if hasattr(new_refresh_token, 'payload'):
-                    for key, value in custom_claims.items():
-                        new_refresh_token.payload[key] = value
+                # Add custom claims to the new refresh token
+                for key, value in custom_claims.items():
+                    new_refresh_token[key] = value
 
-                # Convert new_refresh_token to string
-                new_refresh_token = str(new_refresh_token.token)
-
-                # Prepare response with new tokens
+                # Set the new refresh token in HttpOnly cookie
                 response = Response({"message": "New access token and refresh token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
                 response.set_cookie(
                     key='refresh_token',
-                    value=new_refresh_token,
+                    value=str(new_refresh_token),  # Use the new refresh token
                     httponly=True,
-                    secure=secure_cookie,  
-                    samesite='Lax' if settings.DEBUG else 'None',  
-                    max_age=refresh_token_lifetime,  
+                    secure=secure_cookie,  # Set secure=True in production
+                    samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
+                    max_age=refresh_token_lifetime,  # Set cookie expiration to match refresh token
                 )
+
+                # Blacklist the old refresh token after the new one is securely sent
+                refresh.blacklist()
             else:
                 response = Response({"message": "New access token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
 
-            # Set the new access token in an HttpOnly cookie
+            # Set the new access token in HttpOnly cookie
             response.set_cookie(
                 key='access_token',
-                value=new_access_token.token,
+                value=str(new_access_token),
                 httponly=True,
-                secure=secure_cookie,  
-                samesite='Lax' if settings.DEBUG else 'None',  
-                max_age=access_token_lifetime,  
+                secure=secure_cookie,  # Set secure=True in production
+                samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
+                max_age=access_token_lifetime,  # Set cookie expiration to match access token
             )
 
             # Generate and set a new CSRF token
@@ -404,17 +404,14 @@ class CustomTokenRefreshView(APIView):
                 key='csrftoken',
                 value=csrf_token,
                 httponly=False,  # Needs to be readable by the frontend
-                 secure=secure_cookie,  # Set secure=True in production
+                secure=secure_cookie,  # Set secure=True in production
                 samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
                 max_age=access_token_lifetime,  # Set cookie expiration to match access token
             )
 
-            if api_settings.BLACKLIST_AFTER_ROTATION:
-                # Blacklist the old refresh token now that new ones are securely sent to the client
-                refresh.blacklist()
-                
+            # Return the new access token for debugging in development
             if settings.DEBUG:
-                response.data['access_token'] = new_access_token.token
+                response.data['access_token'] = str(new_access_token)
 
             return response
 

@@ -61,9 +61,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     Serializer for user registration, with password confirmation logic.
     """
     password = serializers.CharField(style={'input_type': 'password'}, write_only=True, label=_("Password"))
-    user_role = serializers.ChoiceField(choices=User.UseRole.choices, label=_("User Role"))
-
-
+    user_role = serializers.CharField(label=_("User Role")) 
     class Meta:
         model = User
         fields = ('first_name', 'last_name', 'email', 'phone_number', 'password', 'user_role')
@@ -75,6 +73,20 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError(_("This email is already in use."))
         return value
+
+    def validate_user_role(self, value):
+        """
+        Custom validation for `user_role`.
+        Allow `user_role` to be passed as a string (e.g., 'Admin') and map it to its integer value.
+        """
+        if isinstance(value, str):
+            # Convert string to integer by matching against `User.UseRole`
+            for role in User.UseRole:
+                if value.strip().upper() == role.label.upper():  # Compare against the role's label (e.g., 'Admin')
+                    return role.value  # Return the integer value corresponding to the string
+            raise serializers.ValidationError(f"Invalid role: {value}")
+        else:
+            raise serializers.ValidationError(f"Invalid type for user_role: {type(value)}")
 
     def validate(self, data):
         # Password strength validation
@@ -94,12 +106,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
         # Admin can create both Admin and Technician accounts
         if request_user.user_role == User.UseRole.ADMIN:
-            if data.get('user_role') == User.UseRole.SUPERADMIN:
+            if data.get('user_role') == User.UseRole.SUPERADMIN.value:
                 raise serializers.ValidationError({"user_role": _("Admins cannot create Superadmin accounts.")})
             return data
 
         # Technicians cannot create any accounts
-        if request_user.user_role == User.UseRole.TECHNICIAN:
+        if request_user.user_role == User.UseRole.TECHNICIAN.value:
             raise serializers.ValidationError({"user_role": _("Technicians cannot create any accounts.")})
 
         return data
@@ -134,6 +146,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"error": "An unexpected error occurred. Please try again."})
 
         return user
+
 
 
 
