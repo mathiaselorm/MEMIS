@@ -607,7 +607,7 @@ class UserListView(ListAPIView):
     Technicians cannot access this view.
     """
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]  # Only authenticated users can access
+    permission_classes = [permissions.IsAuthenticated]  
 
     def get_queryset(self):
         user = self.request.user
