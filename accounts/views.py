@@ -13,6 +13,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.template import TemplateDoesNotExist
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.conf import settings
 from .serializers import *
 from .tasks import *
 
@@ -81,7 +82,7 @@ class UserRegistrationView(views.APIView):
                 }
             )
         },
-        tags=["authentication"]
+        tags=["Authentication"]
     )
     def post(self, request, *args, **kwargs):
         # Pass the request to the serializer for context
