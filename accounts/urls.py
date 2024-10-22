@@ -14,8 +14,8 @@ urlpatterns = [
     
     # endpoint for Admin login
     path('login/', views.CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('login/token/refresh/', views.CustomTokenRefreshView.as_view(), name='token_refresh'),
-    path('login/token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('login/token-refresh/', views.CustomTokenRefreshView.as_view(), name='token_refresh'),
+    path('login/token-verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('logout/', views.logout_view, name='logout'),
 
     # Password endpoints
