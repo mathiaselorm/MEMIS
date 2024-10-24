@@ -27,12 +27,12 @@ import logging
 
 
 
-# Secure cookie setting for production
-secure_cookie = not settings.DEBUG  # Set secure=True in production
+# # Secure cookie setting for production
+# secure_cookie = not settings.DEBUG  # Set secure=True in production
 
-# Token lifetimes (extracted from SimpleJWT settings)
-access_token_lifetime = settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()
-refresh_token_lifetime = settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()
+# # Token lifetimes (extracted from SimpleJWT settings)
+# access_token_lifetime = settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()
+# refresh_token_lifetime = settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()
 
 
 User = get_user_model()
@@ -217,248 +217,251 @@ class RoleAssignmentView(APIView):
 
 
 
+
+
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
     API endpoint for obtaining JWT tokens with custom claims.
-    Generates access and refresh JWT tokens for authenticated users and sets them in HttpOnly cookies.
     """
     serializer_class = CustomTokenObtainPairSerializer
-
-    @swagger_auto_schema(
-        operation_summary="Obtain JWT access and refresh tokens",
-        operation_description="""
-        Authenticated users can obtain JWT access and refresh tokens. 
-        The tokens are set in HttpOnly cookies.
-        """,
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=["email", "password"],
-            properties={
-                "email": openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="User's email address",
-                    example="user@example.com"
-                ),
-                "password": openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    description="User's password",
-                    example="password123"
-                ),
-            },
-            example={
-                "email": "user@example.com",
-                "password": "password123"
-            }
-        ),
-        responses={
-            200: openapi.Response(
-                description="Tokens obtained successfully and set in HttpOnly cookies.",
-                examples={
-                    "application/json": {
-                        "message": "Access token and refresh token set in HttpOnly cookie."
-                    }
-                }
-            ),
-            400: openapi.Response(
-                description="Bad Request - Failed to generate tokens.",
-                examples={
-                    "application/json": {
-                        "error": "Failed to generate tokens."
-                    }
-                }
-            ),
-            401: openapi.Response(
-                description="Unauthorized - Invalid credentials.",
-                examples={
-                    "application/json": {
-                        "error": "Invalid credentials."
-                    }
-                }
-            ),
-        },
-        tags=["Authentication"]
-    )
-    def post(self, request, *args, **kwargs):
-        # Call the default TokenObtainPairView to generate tokens
-        response = super().post(request, *args, **kwargs)
-
-        if response.status_code == 200:
-            # Extract the tokens from the response
-            tokens = response.data
-            access_token = tokens.get('access')
-            refresh_token = tokens.get('refresh')
-            csrf_token = get_token(request)
-
-            # Ensure the tokens exist
-            if not access_token or not refresh_token:
-                return Response({"error": "Failed to generate tokens."}, status=status.HTTP_400_BAD_REQUEST)
-            
-            # response = Response({"message": "Access token and refresh token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
-            
-            # Set access token in HttpOnly cookie
-            response.set_cookie(
-                key='access_token',
-                value=access_token,
-                httponly=True,
-                secure=secure_cookie,  # Ensure secure cookie in production
-                samesite='Lax' if settings.DEBUG else 'None',  # SameSite attribute
-                max_age=access_token_lifetime,  # Expiration matches access token lifetime
-            )
-
-            # Set refresh token in HttpOnly cookie
-            response.set_cookie(
-                key='refresh_token',
-                value=refresh_token,
-                httponly=True,
-                secure=secure_cookie,  # Ensure secure cookie in production
-                samesite='Lax' if settings.DEBUG else 'None',  # SameSite attribute
-                max_age=refresh_token_lifetime,  # Expiration matches refresh token lifetime
-            )
-
-            response.set_cookie(
-                key='csrftoken',
-                value=csrf_token,
-                httponly=False,  # Needs to be readable by the frontend
-                secure=secure_cookie,  # Set secure=True in production
-                samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-                max_age=access_token_lifetime,  # Set cookie expiration to match access token
-            )
-            
-            return response
-
-        # If the request fails (e.g., wrong credentials)
-        return Response({"error": "Invalid credentials."}, status=response.status_code)
+    
     
 
-class CustomTokenRefreshView(APIView):
-    """
-    API endpoint for refreshing JWT access tokens.
-    Uses the refresh token stored in cookies to generate a new access token.
-    """
+#     @swagger_auto_schema(
+#         operation_summary="Obtain JWT access and refresh tokens",
+#         operation_description="""
+#         Authenticated users can obtain JWT access and refresh tokens. 
+#         The tokens are set in HttpOnly cookies.
+#         """,
+#         request_body=openapi.Schema(
+#             type=openapi.TYPE_OBJECT,
+#             required=["email", "password"],
+#             properties={
+#                 "email": openapi.Schema(
+#                     type=openapi.TYPE_STRING,
+#                     description="User's email address",
+#                     example="user@example.com"
+#                 ),
+#                 "password": openapi.Schema(
+#                     type=openapi.TYPE_STRING,
+#                     description="User's password",
+#                     example="password123"
+#                 ),
+#             },
+#             example={
+#                 "email": "user@example.com",
+#                 "password": "password123"
+#             }
+#         ),
+#         responses={
+#             200: openapi.Response(
+#                 description="Tokens obtained successfully and set in HttpOnly cookies.",
+#                 examples={
+#                     "application/json": {
+#                         "message": "Access token and refresh token set in HttpOnly cookie."
+#                     }
+#                 }
+#             ),
+#             400: openapi.Response(
+#                 description="Bad Request - Failed to generate tokens.",
+#                 examples={
+#                     "application/json": {
+#                         "error": "Failed to generate tokens."
+#                     }
+#                 }
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized - Invalid credentials.",
+#                 examples={
+#                     "application/json": {
+#                         "error": "Invalid credentials."
+#                     }
+#                 }
+#             ),
+#         },
+#         tags=["Authentication"]
+#     )
+#     def post(self, request, *args, **kwargs):
+#         # Call the default TokenObtainPairView to generate tokens
+#         response = super().post(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        operation_summary="Refresh JWT access token",
-        operation_description="""
-        This API endpoint allows users to refresh their JWT access token using the refresh token stored in HttpOnly cookies.
-        The response will include:
+#         if response.status_code == 200:
+#             # Extract the tokens from the response
+#             tokens = response.data
+#             access_token = tokens.get('access')
+#             refresh_token = tokens.get('refresh')
+#             csrf_token = get_token(request)
+
+#             # Ensure the tokens exist
+#             if not access_token or not refresh_token:
+#                 return Response({"error": "Failed to generate tokens."}, status=status.HTTP_400_BAD_REQUEST)
+            
+#             # response = Response({"message": "Access token and refresh token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
+            
+#             # Set access token in HttpOnly cookie
+#             response.set_cookie(
+#                 key='access_token',
+#                 value=access_token,
+#                 httponly=True,
+#                 secure=secure_cookie,  # Ensure secure cookie in production
+#                 samesite='Lax' if settings.DEBUG else 'None',  # SameSite attribute
+#                 max_age=access_token_lifetime,  # Expiration matches access token lifetime
+#             )
+
+#             # Set refresh token in HttpOnly cookie
+#             response.set_cookie(
+#                 key='refresh_token',
+#                 value=refresh_token,
+#                 httponly=True,
+#                 secure=secure_cookie,  # Ensure secure cookie in production
+#                 samesite='Lax' if settings.DEBUG else 'None',  # SameSite attribute
+#                 max_age=refresh_token_lifetime,  # Expiration matches refresh token lifetime
+#             )
+
+#             response.set_cookie(
+#                 key='csrftoken',
+#                 value=csrf_token,
+#                 httponly=False,  # Needs to be readable by the frontend
+#                 secure=secure_cookie,  # Set secure=True in production
+#                 samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
+#                 max_age=access_token_lifetime,  # Set cookie expiration to match access token
+#             )
+            
+#             return response
+
+#         # If the request fails (e.g., wrong credentials)
+#         return Response({"error": "Invalid credentials."}, status=response.status_code)
+    
+
+# class CustomTokenRefreshView(APIView):
+#     """
+#     API endpoint for refreshing JWT access tokens.
+#     Uses the refresh token stored in cookies to generate a new access token.
+#     """
+
+#     @swagger_auto_schema(
+#         operation_summary="Refresh JWT access token",
+#         operation_description="""
+#         This API endpoint allows users to refresh their JWT access token using the refresh token stored in HttpOnly cookies.
+#         The response will include:
         
-        - A new access token (set in an HttpOnly cookie).
-        - A new CSRF token (sent in a readable cookie for frontend protection).
+#         - A new access token (set in an HttpOnly cookie).
+#         - A new CSRF token (sent in a readable cookie for frontend protection).
         
-        No request body is required as the refresh token is retrieved from the cookies.
-        """,
-        request_body=None,  # No request body required
-        responses={
-            200: openapi.Response(
-                description="Access token refreshed successfully. Tokens are set in HttpOnly cookies.",
-                examples={
-                    "application/json": {
-                        "message": "New access token set in HttpOnly cookie."
-                    }
-                },
-                headers={
-                    "Set-Cookie": openapi.Schema(
-                        description="JWT Access token and CSRF token set in cookies.",
-                        type="string"
-                    )
-                }
-            ),
-            400: openapi.Response(
-                description="Refresh token not found or invalid.",
-                examples={
-                    "application/json": {
-                        "error": "Refresh token not found."
-                    }
-                }
-            ),
-            401: openapi.Response(
-                description="Unauthorized. The refresh token may have expired or been blacklisted.",
-                examples={
-                    "application/json": {
-                        "detail": "Token is invalid or expired."
-                    }
-                }
-            ),
-        },
-        tags=['Authentication'],
-    )
-    def post(self, request, *args, **kwargs):
-        # Get the refresh token from the cookies
-        refresh_token = request.COOKIES.get('refresh_token')
-        secure_cookie = not settings.DEBUG  # Set secure=True in production
+#         No request body is required as the refresh token is retrieved from the cookies.
+#         """,
+#         request_body=None,  # No request body required
+#         responses={
+#             200: openapi.Response(
+#                 description="Access token refreshed successfully. Tokens are set in HttpOnly cookies.",
+#                 examples={
+#                     "application/json": {
+#                         "message": "New access token set in HttpOnly cookie."
+#                     }
+#                 },
+#                 headers={
+#                     "Set-Cookie": openapi.Schema(
+#                         description="JWT Access token and CSRF token set in cookies.",
+#                         type="string"
+#                     )
+#                 }
+#             ),
+#             400: openapi.Response(
+#                 description="Refresh token not found or invalid.",
+#                 examples={
+#                     "application/json": {
+#                         "error": "Refresh token not found."
+#                     }
+#                 }
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized. The refresh token may have expired or been blacklisted.",
+#                 examples={
+#                     "application/json": {
+#                         "detail": "Token is invalid or expired."
+#                     }
+#                 }
+#             ),
+#         },
+#         tags=['Authentication'],
+#     )
+#     def post(self, request, *args, **kwargs):
+#         # Get the refresh token from the cookies
+#         refresh_token = request.COOKIES.get('refresh_token')
+#         secure_cookie = not settings.DEBUG  # Set secure=True in production
 
-        if not refresh_token:
-            return Response({"error": "Refresh token not found"}, status=status.HTTP_400_BAD_REQUEST)
+#         if not refresh_token:
+#             return Response({"error": "Refresh token not found"}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            # Validate the refresh token
-            refresh = RefreshToken(refresh_token)
+#         try:
+#             # Validate the refresh token
+#             refresh = RefreshToken(refresh_token)
 
-            # Extract custom claims from refresh token payload, excluding standard claims
-            custom_claims = {key: value for key, value in refresh.payload.items() 
-                             if key not in ['token_type', 'exp', 'iat', 'jti']}
+#             # Extract custom claims from refresh token payload, excluding standard claims
+#             custom_claims = {key: value for key, value in refresh.payload.items() 
+#                              if key not in ['token_type', 'exp', 'iat', 'jti']}
 
-            # Generate a new access token
-            new_access_token = refresh.access_token
+#             # Generate a new access token
+#             new_access_token = refresh.access_token
 
-            # Add custom claims to the new access token
-            for key, value in custom_claims.items():
-                new_access_token[key] = value
+#             # Add custom claims to the new access token
+#             for key, value in custom_claims.items():
+#                 new_access_token[key] = value
 
-            # Handle refresh token rotation if enabled
-            if api_settings.ROTATE_REFRESH_TOKENS:
-                # Generate a new refresh token
-                new_refresh_token = RefreshToken()
+#             # Handle refresh token rotation if enabled
+#             if api_settings.ROTATE_REFRESH_TOKENS:
+#                 # Generate a new refresh token
+#                 new_refresh_token = RefreshToken()
 
-                # Add custom claims to the new refresh token
-                for key, value in custom_claims.items():
-                    new_refresh_token[key] = value
+#                 # Add custom claims to the new refresh token
+#                 for key, value in custom_claims.items():
+#                     new_refresh_token[key] = value
 
-                # Set the new refresh token in HttpOnly cookie
-                response = Response({"message": "New access token and refresh token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
-                response.set_cookie(
-                    key='refresh_token',
-                    value=str(new_refresh_token),  # Use the new refresh token
-                    httponly=True,
-                    secure=secure_cookie,  # Set secure=True in production
-                    samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-                    max_age=refresh_token_lifetime,  # Set cookie expiration to match refresh token
-                )
+#                 # Set the new refresh token in HttpOnly cookie
+#                 response = Response({"message": "New access token and refresh token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
+#                 response.set_cookie(
+#                     key='refresh_token',
+#                     value=str(new_refresh_token),  # Use the new refresh token
+#                     httponly=True,
+#                     secure=secure_cookie,  # Set secure=True in production
+#                     samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
+#                     max_age=refresh_token_lifetime,  # Set cookie expiration to match refresh token
+#                 )
 
-                # Blacklist the old refresh token after the new one is securely sent
-                refresh.blacklist()
-            else:
-                response = Response({"message": "New access token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
+#                 # Blacklist the old refresh token after the new one is securely sent
+#                 refresh.blacklist()
+#             else:
+#                 response = Response({"message": "New access token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
 
-            # Set the new access token in HttpOnly cookie
-            response.set_cookie(
-                key='access_token',
-                value=str(new_access_token),
-                httponly=True,
-                secure=secure_cookie,  # Set secure=True in production
-                samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-                max_age=access_token_lifetime,  # Set cookie expiration to match access token
-            )
+#             # Set the new access token in HttpOnly cookie
+#             response.set_cookie(
+#                 key='access_token',
+#                 value=str(new_access_token),
+#                 httponly=True,
+#                 secure=secure_cookie,  # Set secure=True in production
+#                 samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
+#                 max_age=access_token_lifetime,  # Set cookie expiration to match access token
+#             )
 
-            # Generate and set a new CSRF token
-            csrf_token = get_token(request)
-            response.set_cookie(
-                key='csrftoken',
-                value=csrf_token,
-                httponly=False,  # Needs to be readable by the frontend
-                secure=secure_cookie,  # Set secure=True in production
-                samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-                max_age=access_token_lifetime,  # Set cookie expiration to match access token
-            )
+#             # Generate and set a new CSRF token
+#             csrf_token = get_token(request)
+#             response.set_cookie(
+#                 key='csrftoken',
+#                 value=csrf_token,
+#                 httponly=False,  # Needs to be readable by the frontend
+#                 secure=secure_cookie,  # Set secure=True in production
+#                 samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
+#                 max_age=access_token_lifetime,  # Set cookie expiration to match access token
+#             )
 
-            # Return the new access token for debugging in development
-            if settings.DEBUG:
-                response.data['access_token'] = str(new_access_token)
+#             # Return the new access token for debugging in development
+#             if settings.DEBUG:
+#                 response.data['access_token'] = str(new_access_token)
 
-            return response
+#             return response
 
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+#         except Exception as e:
+#             return Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
         
         
 
