@@ -15,4 +15,4 @@ class IsTechnicianUser(permissions.BasePermission):
     Custom permission to allow only Technicians to access specific views.
     """
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.user_role == User.UserRole.TECHNICIAN
+        return request.user.is_authenticated and request.user.user_role == User.UseRole.TECHNICIAN

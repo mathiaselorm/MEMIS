@@ -45,7 +45,7 @@ class UserRegistrationView(views.APIView):
     Admins can only create Technicians and Admins but not Superadmins.
     Technicians cannot create any accounts.
     """
-    permission_classes = [permissions.IsAuthenticated, permissions.IsAdminUser]  # Only Admins and Superusers can access
+    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
 
     @swagger_auto_schema(
         operation_summary="Register a new user",
