@@ -929,8 +929,8 @@ class UserListView(ListAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.is_superuser or user.user_role == User.UseRole.ADMIN:
-            # Superusers and Admins can see all users
-            return User.objects.all().order_by('id')
+            # Superusers and Admins can see all users except superusers
+            return User.objects.filter(is_superuser=False).order_by('id')
         else:
             # Technicians cannot see any users
             raise PermissionDenied(detail="You do not have permission to view this resource.")
