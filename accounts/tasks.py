@@ -1,6 +1,6 @@
 import logging
 from django.core.mail import EmailMultiAlternatives
-from background_task import background
+from celery import shared_task
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.contrib.auth import get_user_model
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 # Get the user model
 User = get_user_model()
 
-@background(schedule=0)  # Task runs immediately
+@shared_task
 def send_welcome_email(user_email, user_pk, reset_url):
     """
     Sends a welcome email with a link to set the user's password.
@@ -56,7 +56,7 @@ def send_welcome_email(user_email, user_pk, reset_url):
         logger.error(f"Error sending welcome email to {user_email}: {e}")
 
 
-@background(schedule=5)  # Task runs 5 seconds after it's called
+@shared_task
 def send_password_reset_email(user_id, reset_url):
     """
     Sends a password reset email to the user.

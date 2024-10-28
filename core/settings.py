@@ -47,19 +47,47 @@ ALLOWED_HOSTS = ['*']
 EMAIL_BACKEND = 'accounts.utils.BrevoAPIBackend'
 
 # Mailgun API configuration
-BREVO_API_KEY = config('BREVO_API_KEY')
-BREVO_DOMAIN = config('BREVO_DOMAIN')
+BREVO_API_KEY = env('BREVO_API_KEY')
+BREVO_DOMAIN = env('BREVO_DOMAIN')
 
 # Default email settings
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='memis@melarc.me')
 
 
-# Backgroud_task settings
-BACKGROUND_TASK_RUN_ASYNC = True
-BACKGROUND_TASK_MAX_ATTEMPTS = 3
-BACKGROUND_TASK_EXPIRED = 60 * 60 * 24   # Tasks will expire after 24 hours if they are not completed (measured in seconds)
-BACKGROUND_TASK_RETRY_INTERVAL = [50, 300, 600] # Retry intervals in seconds: 1 minute, 5 minutes, 10 minutes between retries
-BACKGROUND_TASK_COMPLETE_EXPIRED = 60 * 60 * 24  # Completed tasks expire after 24 hours
+broker_connection_retry_on_startup = True
+
+# Celery configuration
+CELERY_BROKER_URL = env('REDISCLOUD_URL')  # Use REDISCLOUD_URL from the environment
+CELERY_RESULT_BACKEND = env('REDISCLOUD_URL')  # Set the result backend to the same Redis instance
+
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+CELERY_TASK_ALWAYS_EAGER = False  # Set to True only for local development if needed
+
+BROKER_TRANSPORT_OPTIONS = {
+    "max_connections": 2,
+}
+
+# Logging for Celery workers
+CELERY_WORKER_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
+CELERY_WORKER_TASK_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(task_name)s[%(task_id)s]: %(message)s"
+CELERY_WORKER_REDIRECT_STDOUTS = True
+CELERY_WORKER_REDIRECT_STDOUTS_LEVEL = 'DEBUG'
+
+
+# CELERY_BROKER_URL = os.environ.get("REDISCLOUD_URL", "django://")
+# CELERY_RESULT_BACKEND = 'redis://localhost:6380/0'
+# CELERY_ACCEPT_CONTENT = ['json']
+# CELERY_TASK_SERIALIZER = 'json'
+# CELERY_RESULT_SERIALIZER = 'json'
+# CELERY_TIMEZONE = 'UTC'
+# CELERY_TASK_ALWAYS_EAGER = False  # Set to True if you want tasks to execute locally
+# CELERY_WORKER_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
+# CELERY_WORKER_TASK_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(task_name)s[%(task_id)s]: %(message)s"
+# CELERY_WORKER_REDIRECT_STDOUTS = True
+# CELERY_WORKER_REDIRECT_STDOUTS_LEVEL = 'DEBUG'
 
 
 PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds

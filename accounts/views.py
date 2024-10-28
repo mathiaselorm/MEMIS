@@ -738,7 +738,7 @@ class PasswordResetRequestView(views.APIView):
                 uid = urlsafe_base64_encode(force_bytes(user.pk))
 
                 # Construct the password reset URL using the frontend URL
-                reset_url = f"{frontend_url}/password-reset/{uid}/{token}/"
+                reset_url = f"{frontend_url}/{uid}/{token}/"
 
                 try:
                     # Send the password reset email (this could be a background task)
