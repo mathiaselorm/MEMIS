@@ -1,15 +1,18 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
 from auditlog.registry import auditlog
 from auditlog.models import AuditlogHistoryField
 from dirtyfields import DirtyFieldsMixin 
 from cloudinary.models import CloudinaryField
-import helpers
+from django.utils import timezone
+from decimal import Decimal
+import itertools
 
 
-helpers.cloudinary_init()
+
 
 User = get_user_model()
 

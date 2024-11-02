@@ -1,56 +1,56 @@
 from django import forms
-from django.contrib.auth.forms import ReadOnlyPasswordHashField
+from django.contrib.auth.forms import UserCreationForm, UserChangeForm
 from .models import CustomUser
 
 
-class CustomUserCreationForm(forms.ModelForm):
+class CustomUserCreationForm(UserCreationForm):
     """
-    A form for creating new users. Includes all the required
-    fields, plus a repeated password.
+    A form for creating new users in the admin panel. Includes all required fields,
+    plus repeated password fields for validation.
     """
-    password1 = forms.CharField(label="Password", widget=forms.PasswordInput)
-    password2 = forms.CharField(label="Password confirmation", widget=forms.PasswordInput)
 
     class Meta:
         model = CustomUser
-        fields = ('first_name', 'last_name', 'email', 'phone_number', 'user_role')  # Include user_role here
-
-    def clean_password2(self):
-        """
-        Check that the two password entries match.
-        """
-        password1 = self.cleaned_data.get("password1")
-        password2 = self.cleaned_data.get("password2")
-        if password1 and password2 and password1 != password2:
-            raise forms.ValidationError("Passwords don't match")
-        return password2
-
-    def save(self, commit=True):
-        """
-        Save the provided password in hashed format.
-        """
-        user = super().save(commit=False)
-        user.set_password(self.cleaned_data["password1"])  # Hash the password
-        if commit:
-            user.save()
-        return user
+        fields = ('first_name', 'last_name', 'email', 'phone_number', 'user_role', 'is_staff', 'is_active', 'is_superuser')
 
 
-class CustomUserChangeForm(forms.ModelForm):
+class CustomUserChangeForm(UserChangeForm):
     """
-    A form for updating users. Includes all the fields on
-    the user, but replaces the password field with admin's
-    disabled password hash display field.
+    A form for updating users in the admin panel. Excludes the password hash display field
+    and provides a secure way to set a new password.
     """
-    password = ReadOnlyPasswordHashField()
+
+    password = forms.CharField(
+        label="Password",
+        required=False,
+        widget=forms.PasswordInput(attrs={'autocomplete': 'new-password'}),
+        help_text="Leave blank if you don't want to change the password.",
+    )
 
     class Meta:
         model = CustomUser
-        fields = ('first_name', 'last_name', 'email', 'phone_number', 'user_role', 'password', 'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')  # Include user_role and other permissions-related fields
+        fields = ('first_name', 'last_name', 'email', 'phone_number', 'user_role',
+                  'is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')
 
     def clean_password(self):
         """
-        Regardless of what the user provides, return the initial value.
-        This is done here, so that password is not altered in the admin.
+        Validate the password field.
         """
-        return self.initial["password"]
+        password = self.cleaned_data.get('password')
+        if password:
+            # Add any custom password validation here
+            pass
+        return password
+
+    def save(self, commit=True):
+        """
+        Save the user, setting the password if provided.
+        """
+        user = super().save(commit=False)
+        password = self.cleaned_data.get('password')
+        if password:
+            user.set_password(password)
+        if commit:
+            user.save()
+            self.save_m2m()
+        return user

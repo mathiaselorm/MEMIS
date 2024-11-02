@@ -1,20 +1,12 @@
 import logging
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, password_validation
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
-from django.core.exceptions import ValidationError
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.settings import api_settings
+from rest_framework.exceptions import ValidationError
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import AuditLog
-from .tasks import send_welcome_email
-
-import traceback
-from django.urls import reverse
-from django.utils.http import urlsafe_base64_encode
-from django.utils.encoding import force_bytes
-from django.contrib.auth.tokens import default_token_generator
-
+from django_rest_passwordreset.models import ResetPasswordToken
+from django_rest_passwordreset.signals import reset_password_token_created
 
 
 
@@ -33,8 +25,11 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'email', 'first_name', 'last_name', 'phone_number', 'user_role', 'date_joined', 'last_login')
-        read_only_fields = ('date_joined', 'last_login', 'user_role')
+        fields = (
+            'id', 'email', 'first_name', 'last_name', 'phone_number',
+            'user_role', 'date_joined', 'last_login'
+        )
+        read_only_fields = ('email', 'date_joined', 'last_login', 'user_role')
         extra_kwargs = {
             'first_name': {'label': _("First Name")},
             'last_name': {'label': _("Last Name")},
@@ -42,110 +37,95 @@ class UserSerializer(serializers.ModelSerializer):
         }
 
     def get_user_role(self, obj):
-        return obj.get_user_role_display()  # Align with `choices` field in model
-    
+        return obj.get_user_role_display()
+
     def update(self, instance, validated_data):
-        validated_data.pop('email', None)  # Prevent email from being updated
+        # Prevent updating email and user_role
+        validated_data.pop('email', None)
+        validated_data.pop('user_role', None)
+
         instance.first_name = validated_data.get('first_name', instance.first_name)
         instance.last_name = validated_data.get('last_name', instance.last_name)
         instance.phone_number = validated_data.get('phone_number', instance.phone_number)
         instance.save()
-        logger.info(f"User {instance.first_name} updated their profile successfully.")
-        
+        logger.info(f"User {instance.email} updated their profile successfully.")
+
         return instance
+
 
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """
-    Serializer for user registration, with password confirmation logic.
+    Serializer for user registration.
     """
-    password = serializers.CharField(style={'input_type': 'password'}, write_only=True, label=_("Password"))
-    user_role = serializers.CharField(label=_("User Role")) 
+    user_role = serializers.CharField(label=_("User Role"))
+
     class Meta:
         model = User
-        fields = ('first_name', 'last_name', 'email', 'phone_number', 'password', 'user_role')
-        extra_kwargs = {
-            'password': {'write_only': True, 'label': _("Password")},
-        }
-    
+        fields = ('first_name', 'last_name', 'email', 'phone_number', 'user_role')
+
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError(_("This email is already in use."))
-        return value
+        if User.objects.filter(email__iexact=value).exists():
+            raise ValidationError(_("This email is already in use."))
+        return value.lower()
 
     def validate_user_role(self, value):
         """
         Custom validation for `user_role`.
-        Allow `user_role` to be passed as a string (e.g., 'Admin') and map it to its integer value.
+        Accepts role as a string and converts it to the corresponding integer value.
         """
         if isinstance(value, str):
-            # Convert string to integer by matching against `User.UseRole`
-            for role in User.UseRole:
-                if value.strip().upper() == role.label.upper():  # Compare against the role's label (e.g., 'Admin')
-                    return role.value  # Return the integer value corresponding to the string
-            raise serializers.ValidationError(f"Invalid role: {value}")
-        else:
-            raise serializers.ValidationError(f"Invalid type for user_role: {type(value)}")
+            for role in User.UserRole:
+                if value.strip().lower() == role.label.lower():
+                    return role.value  # Return the integer value
+            raise ValidationError({"user_role": _("Invalid role: %(value)s") % {'value': value}})
+        raise ValidationError({"user_role": _("Invalid type for user_role: %(type)s") % {'type': type(value).__name__}})
 
     def validate(self, data):
-        # Password strength validation
-        if len(data['password']) < 8:
-            raise serializers.ValidationError({"password": _("Password must be at least 8 characters long.")})
-        if not any(char.isdigit() for char in data['password']):
-            raise serializers.ValidationError({"password": _("The password must include at least one number.")})
-        if not any(char.isalpha() for char in data['password']):
-            raise serializers.ValidationError({"password": _("The password must include at least one letter.")})
-
         # Role-based validation
         request_user = self.context['request'].user
-        
+
         # Superadmin can create any account type
-        if request_user.user_role == User.UseRole.SUPERADMIN:
+        if request_user.user_role == User.UserRole.SUPERADMIN:
             return data
 
-        # Admin can create both Admin and Technician accounts
-        if request_user.user_role == User.UseRole.ADMIN:
-            if data.get('user_role') == User.UseRole.SUPERADMIN.value:
-                raise serializers.ValidationError({"user_role": _("Admins cannot create Superadmin accounts.")})
+        # Admin can create Admin and Technician accounts
+        if request_user.user_role == User.UserRole.ADMIN:
+            if data.get('user_role') == User.UserRole.SUPERADMIN.value:
+                raise ValidationError({"user_role": _("Admins cannot create Superadmin accounts.")})
             return data
 
         # Technicians cannot create any accounts
-        if request_user.user_role == User.UseRole.TECHNICIAN.value:
-            raise serializers.ValidationError({"user_role": _("Technicians cannot create any accounts.")})
-
-        return data
+        raise ValidationError({"user_role": _("You do not have permission to create accounts.")})
 
     def create(self, validated_data):
-        password = validated_data.pop('password')
+        user_role_value = validated_data.pop('user_role')
+        validated_data['user_role'] = user_role_value
 
-        try:
-            # Create the user
-            user = User.objects.create_user(password=password, **validated_data)
-            logger.info(f"User created successfully: {user.email}")
+        # Create the user without a password
+        user = User.objects.create_user(**validated_data)
+        user.set_unusable_password()
+        user.save()
+        logger.info(f"User created successfully: {user.email}")
 
-            # Send email to the newly created user to set/change their password
-            token = default_token_generator.make_token(user)
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            reset_url = self.context['request'].build_absolute_uri(
-                reverse('password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
-            )
+        # Trigger the password reset process
+        token = ResetPasswordToken.objects.create(
+            user=user,
+            user_agent=self.context['request'].META.get('HTTP_USER_AGENT', ''),
+            ip_address=self.context['request'].META.get('REMOTE_ADDR', ''),
+        )
 
-            logger.info(f"Sending welcome email to {user.email} with reset URL: {reset_url}")
-
-            # Trigger email to set up the password
-            send_welcome_email(user.email, user.pk, reset_url)
-            
-        except ValidationError as e:
-            logger.error(f"User creation failed due to validation error: {e}")
-            raise serializers.ValidationError({"user": _("User could not be created. Please ensure all fields are correct.")})
-        
-        except Exception as e:
-            # Log the full traceback for debugging
-            logger.error(f"Unexpected error during user creation: {traceback.format_exc()}")
-            raise serializers.ValidationError({"error": "An unexpected error occurred. Please try again."})
+        # Send the reset password token created signal with additional context
+        reset_password_token_created.send(
+            sender=self.__class__,
+            instance=self,
+            reset_password_token=token,
+            created_via='registration'
+        )
 
         return user
+
 
 
 
@@ -163,32 +143,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
     
 
-
-
-
-class PasswordResetRequestSerializer(serializers.Serializer):
-    email = serializers.EmailField(label=_("Email Address"))
-    frontend_url = serializers.URLField() 
-
-    def validate_email(self, value):
-        if not User.objects.filter(email=value).exists():
-            logger.error(f"Password reset requested for non-existent email: {value}")
-            raise serializers.ValidationError(_("No user is associated with this email address."))
-        return value
-
-class PasswordResetSerializer(serializers.Serializer):
-    new_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, label=_("New Password"))
-
-    def validate(self, data):
-        if len(data['new_password']) < 8:
-            raise serializers.ValidationError({"new_password": _("The password must be at least 8 characters long.")})
-        if not any(char.isdigit() for char in data['new_password']):
-            raise serializers.ValidationError({"new_password": _("The password must include at least one numeral.")})
-        if not any(char.isalpha() for char in data['new_password']):
-            raise serializers.ValidationError({"new_password": _("The password must include at least one letter.")})
-        return data
-
-
 class PasswordChangeSerializer(serializers.Serializer):
     old_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, label=_("Old Password"))
     new_password = serializers.CharField(style={'input_type': 'password'}, write_only=True, label=_("New Password"))
@@ -200,56 +154,75 @@ class PasswordChangeSerializer(serializers.Serializer):
         if not user.check_password(data['old_password']):
             raise serializers.ValidationError({"old_password": _("The old password is incorrect.")})
 
-        # Additional password strength validation
-        if len(data['new_password']) < 8:
-            raise serializers.ValidationError({"new_password": _("The password must be at least 8 characters long.")})
-        if not any(char.isdigit() for char in data['new_password']):
-            raise serializers.ValidationError({"new_password": _("The password must include at least one numeral.")})
-        if not any(char.isalpha() for char in data['new_password']):
-            raise serializers.ValidationError({"new_password": _("The password must include at least one letter.")})
+        # Validate the new password
+        password_validation.validate_password(data['new_password'], user)
 
         return data
+
+    def save(self, **kwargs):
+        user = self.context['request'].user
+        new_password = self.validated_data['new_password']
+        user.set_password(new_password)
+        user.save()
+        logger.info(f"User {user.email} changed their password.")
+        return user
     
 
 # Serializer for Role Assignment (Admin Only)
-class RoleAssignmentSerializer(serializers.Serializer):
+class RoleAssignmentSerializer(serializers.ModelSerializer):
     """
     Serializer to assign or change user roles.
-    Admins can change the role of other users based on their first name.
     """
-    first_name = serializers.CharField(max_length=150)  # Field to accept user's first name
-    new_role = serializers.ChoiceField(choices=[(role.name, role.label) for role in User.UseRole])
+    new_role = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ('id', 'email', 'first_name', 'last_name', 'user_role', 'new_role')
+        read_only_fields = ('email', 'first_name', 'last_name', 'user_role')
+
+    def validate_new_role(self, value):
+        """
+        Custom validation for `new_role`.
+        """
+        if isinstance(value, str):
+            for role in User.UserRole:
+                if value.strip().lower() == role.label.lower():
+                    role_value = role.value
+                    break
+            else:
+                raise ValidationError({"new_role": _("Invalid role: %(value)s") % {'value': value}})
+        else:
+            raise ValidationError({"new_role": _("Invalid type for new_role: %(type)s") % {'type': type(value).__name__}})
+
+        request_user = self.context['request'].user
+
+        # Permission-based validation
+        if request_user.user_role == User.UserRole.SUPERADMIN:
+            return role_value
+
+        if request_user.user_role == User.UserRole.ADMIN:
+            if role_value == User.UserRole.SUPERADMIN:
+                raise ValidationError(_("Admins cannot assign the Superadmin role."))
+            return role_value
+
+        # Technicians cannot assign roles
+        raise ValidationError(_("You do not have permission to assign roles."))
 
     def update(self, instance, validated_data):
-        # Fetch the user by first name (for simplicity, assumes unique first names)
-        try:
-            user = User.objects.get(first_name=validated_data['first_name'])
-        except User.DoesNotExist:
-            raise serializers.ValidationError({"first_name": _("User with the given first name does not exist.")})
-
-        new_role_name = validated_data['new_role']
-
-        # Map the role name to its corresponding integer value
-        new_role = next(role.value for role in User.UseRole if role.name == new_role_name)
-
-        # Check if the request user is an admin or superuser
-        request_user = self.context['request'].user
-        if not request_user.is_superuser and request_user.user_role != User.UseRole.ADMIN:
-            raise serializers.ValidationError("You do not have permission to assign roles.")
-        
-        # Ensure Admins cannot assign Superadmin role
-        if request_user.user_role == User.UseRole.ADMIN and new_role == User.UseRole.SUPERADMIN:
-            raise serializers.ValidationError("Admins cannot assign the Superadmin role.")
-
-        # Update the user's role
-        user.user_role = new_role
-        user.save()
+        new_role = validated_data.get('new_role')
+        instance.user_role = new_role
+        instance.save()
 
         # Log the role change
-        from .signals import log_role_assignment
-        log_role_assignment(request_user, user, new_role)
+        AuditLog.objects.create(
+            user=self.context['request'].user,
+            action=AuditLog.ActionChoices.ASSIGN_ROLE,
+            target_user=instance,
+            details=f"Changed role to {instance.get_user_role_display()}."
+        )
 
-        return user
+        return instance
+
 
 
 
@@ -258,33 +231,21 @@ class AuditLogSerializer(serializers.ModelSerializer):
     """
     Serializer for AuditLog model, to track user actions.
     """
-    user = serializers.SerializerMethodField()  # Use full name for user
-    target_user = serializers.SerializerMethodField()  # Use full name for target_user
+    user = serializers.SerializerMethodField()
+    target_user = serializers.SerializerMethodField()
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
 
     class Meta:
         model = AuditLog
-        fields = ['id', 'user', 'action', 'target_user', 'timestamp', 'details']
-        read_only_fields = ['id', 'user', 'action', 'target_user', 'timestamp', 'details']
+        fields = ['id', 'user', 'action', 'action_display', 'target_user', 'timestamp', 'details']
+        read_only_fields = ['id', 'user', 'action', 'action_display', 'target_user', 'timestamp', 'details']
 
     def get_user(self, obj):
-        return f"{obj.user.first_name} {obj.user.last_name}"  # Full name for user
-    
+        if obj.user:
+            return obj.user.get_full_name()
+        return _("System")
+
     def get_target_user(self, obj):
         if obj.target_user:
-            return f"{obj.target_user.first_name} {obj.target_user.last_name}"  # Full name for target_user
+            return obj.target_user.get_full_name()
         return None
-
-        
-        
-
-
-
-
-
-
-# Custom validation for password confirmation
-# if data['password'] != data['password_confirm']:
-#     raise serializers.ValidationError({"password": _("Password fields didn't match.")})     
-
-#if not any(char in '!@#$%^&*()' for char in data['new_password']):
-    # raise serializers.ValidationError({"new_password": _("The password must include at least one special character (!@#$%^&*()).")})

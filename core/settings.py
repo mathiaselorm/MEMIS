@@ -46,6 +46,10 @@ ALLOWED_HOSTS = ['*']
 
 EMAIL_BACKEND = 'accounts.utils.BrevoAPIBackend'
 
+
+FRONTEND_URL = 'https://yourfrontend.com' 
+
+
 # Mailgun API configuration
 BREVO_API_KEY = env('BREVO_API_KEY')
 BREVO_DOMAIN = env('BREVO_DOMAIN')
@@ -77,19 +81,6 @@ CELERY_WORKER_REDIRECT_STDOUTS = True
 CELERY_WORKER_REDIRECT_STDOUTS_LEVEL = 'DEBUG'
 
 
-# CELERY_BROKER_URL = os.environ.get("REDISCLOUD_URL", "django://")
-# CELERY_RESULT_BACKEND = 'redis://localhost:6380/0'
-# CELERY_ACCEPT_CONTENT = ['json']
-# CELERY_TASK_SERIALIZER = 'json'
-# CELERY_RESULT_SERIALIZER = 'json'
-# CELERY_TIMEZONE = 'UTC'
-# CELERY_TASK_ALWAYS_EAGER = False  # Set to True if you want tasks to execute locally
-# CELERY_WORKER_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
-# CELERY_WORKER_TASK_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(task_name)s[%(task_id)s]: %(message)s"
-# CELERY_WORKER_REDIRECT_STDOUTS = True
-# CELERY_WORKER_REDIRECT_STDOUTS_LEVEL = 'DEBUG'
-
-
 PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 
 
@@ -97,6 +88,17 @@ CSRF_COOKIE_HTTPONLY = False  # Allows JavaScript to access the token
 CSRF_COOKIE_NAME = "csrftoken"  # Name of the CSRF token in cookies
 CSRF_COOKIE_SECURE = not DEBUG  # Set to True in production
 CSRF_TRUSTED_ORIGINS = ['http://localhost:3000']  # Frontend URLs that Django trusts
+
+
+# Cloudinary storage configuration using environment variables
+cloudinary.config(
+    cloud_name=config('CLOUDINARY_CLOUD_NAME'),
+    api_key=config('CLOUDINARY_API_KEY'),
+    api_secret=config('CLOUDINARY_API_SECRET'),
+    secure=True  # Ensure the connection is secure
+)
+# Use Cloudinary as the default file storage
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 
 # Application definition
@@ -108,17 +110,20 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',
     'cloudinary_storage',
     'cloudinary',
-    'background_task',
     'django_cleanup.apps.CleanupConfig',
     'rest_framework',
+    'django_rest_passwordreset',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
     'drf_yasg',
     'auditlog',
+    
+    #installed apps
     'accounts',
     'assets',
     'inventory'
@@ -157,6 +162,15 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": False,
 }
 
+
+# DJANGO_REST_PASSWORDRESET_TOKEN_CONFIG = {
+#     'CLASS': 'django_rest_passwordreset.tokens.RandomStringTokenGenerator',
+#     'OPTIONS': {
+#         'lifetime': timedelta(hours=1)
+#     }
+# }
+
+
 # Cloudinary storage configuration using environment variables
 cloudinary.config(
     cloud_name=config('CLOUDINARY_CLOUD_NAME'),
@@ -174,6 +188,14 @@ ROOT_URLCONF = 'core.urls'
 
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+
+# Password reset token expiration time in hours
+DJANGO_REST_MULTITOKENAUTH_RESET_TOKEN_EXPIRY_TIME = 1 # Default is 24 hours
+# Prevent information leakage for non-existent users on password reset request
+DJANGO_REST_PASSWORDRESET_NO_INFORMATION_LEAKAGE = False  # Default is False
+# Allow password reset for users without a usable password
+DJANGO_REST_MULTITOKENAUTH_REQUIRE_USABLE_PASSWORD = True  # Default is True
+
 
 
 TEMPLATES = [
@@ -194,52 +216,41 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 
-# LOGGING = {
-#     'version': 1,
-#     'disable_existing_loggers': False,
-#     'formatters': {
-#         'verbose': {
-#             'format': '{levelname} {asctime} {module} {message}',
-#             'style': '{',
-#         },
-#     },
-#     'handlers': {
-#         'file': {
-#             'level': 'DEBUG',  # Capture more details, including debug info
-#             'class': 'logging.handlers.RotatingFileHandler',
-#             'filename': 'django_errors.log',  # Make sure this file is writable
-#             'formatter': 'verbose',
-#             'maxBytes': 1024 * 1024 * 5,  # 5MB log file
-#             'backupCount': 3,
-#         },
-#         'console': {
-#             'level': 'DEBUG',
-#             'class': 'logging.StreamHandler',
-#             'formatter': 'verbose',
-#         },
-#     },
-#     'root': {  # Configure root logger to capture all logs
-#         'handlers': ['file', 'console'],  # Output to both file and console
-#         'level': 'DEBUG',  # Log all events down to DEBUG level
-#     },
-#     'loggers': {
-#         'django': {
-#             'handlers': ['file', 'console'],
-#             'level': 'DEBUG',
-#             'propagate': True,
-#         },
-#         'django.db.backends': {  # Log database queries
-#             'handlers': ['file'],
-#             'level': 'DEBUG',
-#             'propagate': False,
-#         },
-#         'background_task': {
-#             'handlers': ['file'],
-#             'level': 'DEBUG',  # Capture debug info for background tasks
-#             'propagate': True,
-#         },
-#     },
-# }
+LOGGING = {
+            'version': 1,
+            'disable_existing_loggers': False,
+            'formatters': {
+                'verbose': {
+                    'format': '{levelname} {asctime} {module} {message}',
+                    'style': '{',
+                },
+            },
+            'handlers': {
+                'file': {
+                    'level': 'ERROR',
+                    'class': 'logging.handlers.RotatingFileHandler',
+                    'filename': 'django_errors.log',
+                    'formatter': 'verbose',
+                },
+            },
+            'loggers': {
+                'django': {
+                    'handlers': ['file'],
+                    'level': 'DEBUG',
+                    'propagate': True,
+                },
+                'accounts': {
+                    'handlers': ['file'],
+                    'level': 'DEBUG',
+                    'propagate': True,
+                },
+                'assets': {
+                    'handlers': ['file'],
+                    'level': 'DEBUG',
+                    'propagate': True,
+                },
+            },
+        }
 
 
 
@@ -262,8 +273,11 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
     },
-    {
+   {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8, # Minimum length of 8 characters
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -301,56 +315,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
+SITE_ID = 1
 
 
 
-
-
-
-
-# LOGGING = {
-#     'version': 1,
-#     'disable_existing_loggers': False,
-#     'formatters': {
-#         'verbose': {
-#             'format': '{levelname} {asctime} {module} {message}',
-#             'style': '{',
-#         },
-#     },
-#     'handlers': {
-#         'file': {
-#             'level': 'DEBUG',  # Capture more details, including debug info
-#             'class': 'logging.handlers.RotatingFileHandler',
-#             'filename': 'django_errors.log',  # Make sure this file is writable
-#             'formatter': 'verbose',
-#             'maxBytes': 1024 * 1024 * 5,  # 5MB log file
-#             'backupCount': 3,
-#         },
-#         'console': {
-#             'level': 'DEBUG',
-#             'class': 'logging.StreamHandler',
-#             'formatter': 'verbose',
-#         },
-#     },
-#     'root': {  # Configure root logger to capture all logs
-#         'handlers': ['file', 'console'],  # Output to both file and console
-#         'level': 'DEBUG',  # Log all events down to DEBUG level
-#     },
-#     'loggers': {
-#         'django': {
-#             'handlers': ['file', 'console'],
-#             'level': 'DEBUG',
-#             'propagate': True,
-#         },
-#         'django.db.backends': {  # Log database queries
-#             'handlers': ['file'],
-#             'level': 'DEBUG',
-#             'propagate': False,
-#         },
-#         'background_task': {
-#             'handlers': ['file'],
-#             'level': 'DEBUG',  # Capture debug info for background tasks
-#             'propagate': True,
-#         },
-#     },
-# }

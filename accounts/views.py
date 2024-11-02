@@ -1,51 +1,55 @@
-from rest_framework.views import APIView
-from django.contrib.auth import get_user_model
-from rest_framework import generics, status, views, permissions
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from django.middleware.csrf import get_token
-from rest_framework_simplejwt.settings import api_settings
-from rest_framework.exceptions import PermissionDenied
-from rest_framework.generics import ListAPIView
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.response import Response
-from .permissions import IsAdminUser
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
-from django.template import TemplateDoesNotExist
-from rest_framework_simplejwt.tokens import RefreshToken
-from django.conf import settings
-from .serializers import *
-from .tasks import *
-
-
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.http import urlsafe_base64_encode
-from django.utils.encoding import force_bytes
 import logging
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_bytes
+from django.utils.translation import gettext_lazy as _
+from rest_framework import generics, permissions, status, views
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.generics import ListAPIView
+from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
+from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
+from django.core.exceptions import ValidationError
 
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 
+from django_rest_passwordreset.views import ResetPasswordRequestToken
 
-# # Secure cookie setting for production
-# secure_cookie = not settings.DEBUG  # Set secure=True in production
-
-# # Token lifetimes (extracted from SimpleJWT settings)
-# access_token_lifetime = settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()
-# refresh_token_lifetime = settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME'].total_seconds()
-
+from .models import AuditLog
+from .permissions import IsAdminOrSuperAdmin
+from .serializers import (
+    AuditLogSerializer,
+    CustomTokenObtainPairSerializer,
+    PasswordChangeSerializer,
+    RoleAssignmentSerializer,
+    UserRegistrationSerializer,
+    UserSerializer,
+)
+from .tasks import send_password_change_email
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
-class UserRegistrationView(views.APIView):
+
+
+
+
+
+
+class UserRegistrationView(generics.CreateAPIView):
     """
     API endpoint for registering a new user.
     Superusers can create any role, including Admins and Superadmins.
     Admins can only create Technicians and Admins but not Superadmins.
     Technicians cannot create any accounts.
     """
-    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    serializer_class = UserRegistrationSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
 
     @swagger_auto_schema(
         operation_summary="Register a new user",
@@ -54,30 +58,7 @@ class UserRegistrationView(views.APIView):
         Admins can only create Technicians and Admins but not Superadmins.
         Technicians cannot create any accounts.
         """,
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['first_name', 'last_name', 'email', 'password', 'user_role'],  # This should be a list, not a boolean
-            properties={
-                'first_name': openapi.Schema(type=openapi.TYPE_STRING, description='User\'s first name'),
-                'last_name': openapi.Schema(type=openapi.TYPE_STRING, description='User\'s last name'),
-                'email': openapi.Schema(type=openapi.TYPE_STRING, description='User\'s email address'),
-                'phone_number': openapi.Schema(type=openapi.TYPE_STRING, description='User\'s phone number (optional)', nullable=True),
-                'password': openapi.Schema(type=openapi.TYPE_STRING, format='password', description='User\'s password (must meet minimum strength requirements)'),
-                'user_role': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    enum=['Superadmin', 'Admin', 'Technician'],
-                    description='Role to be assigned to the user. Choose between Superadmin, Admin, or Technician.'
-                )
-            },
-            example={
-                "first_name": "John",
-                "last_name": "Doe",
-                "email": "john.doe@example.com",
-                "phone_number": "+1234567890",
-                "password": "Password123!",
-                "user_role": "Admin"
-            }
-        ),
+        request_body=UserRegistrationSerializer,
         responses={
             201: openapi.Response(
                 description="User registered successfully. An email has been sent to set their password.",
@@ -92,7 +73,7 @@ class UserRegistrationView(views.APIView):
                 examples={
                     "application/json": {
                         "email": ["This email is already in use."],
-                        "password": ["Password must be at least 8 characters long."],
+                        "user_role": ["Invalid role specified."],
                     }
                 }
             ),
@@ -100,48 +81,51 @@ class UserRegistrationView(views.APIView):
                 description="Internal Server Error",
                 examples={
                     "application/json": {
-                        "error": "Email template not found."
+                        "error": "An unexpected error occurred."
                     }
                 }
-            )
+            ),
         },
         tags=["Authentication"]
     )
     def post(self, request, *args, **kwargs):
-        # Pass the request to the serializer for context
-        serializer = UserRegistrationSerializer(data=request.data, context={'request': request})
-        
-        # Validate the serializer
-        if serializer.is_valid():
-            try:
-                # Save the user and send the account creation email
-                user = serializer.save()
-                
-                # Log the success and proceed with sending email
-                logger.info(f"User created successfully: {user.email}")
+        return super().post(request, *args, **kwargs)
 
-                # Prepare the response with user details and tokens
-                return Response({
-                    'message': "User registered successfully. An email has been sent to set their password."
-                }, status=status.HTTP_201_CREATED)
+    def perform_create(self, serializer):
+        user = serializer.save()
 
-            except TemplateDoesNotExist as e:
-                logger.error(f"Template not found: {e}")
-                return Response({"error": "Email template not found."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            except Exception as e:
-                logger.error(f"Error during user creation: {e}")
-                return Response({"error": "An unexpected error occurred."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-        # If serializer is not valid, return the errors
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        # Get the user's full name 
+        full_name = user.get_full_name()
+
+        # Log the user creation with full name
+        AuditLog.objects.create(
+            user=self.request.user,
+            action=AuditLog.ActionChoices.CREATE,
+            target_user=user,
+            details=_('User created: %(full_name)s') % {
+                'full_name': full_name,
+            }
+        )
+        logger.info(f"User {self.request.user.get_full_name()} created user with full name {full_name}.")
+
+    def create(self, request, *args, **kwargs):
+        # Override the create method to customize the response
+        response = super().create(request, *args, **kwargs)
+        return Response(
+            {"message": "User registered successfully."},
+            status=status.HTTP_201_CREATED
+        )
 
 
-class RoleAssignmentView(APIView):
+class RoleAssignmentView(generics.UpdateAPIView):
     """
     API endpoint to assign or change user roles.
     Only Admins and Superadmins can assign roles.
     """
-    permission_classes = [IsAdminUser]  # Only Admins or Superadmins can access this view
+    queryset = User.objects.all()
+    serializer_class = RoleAssignmentSerializer
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
+    lookup_field = 'id'  # or 'email' if preferred
 
     @swagger_auto_schema(
         operation_summary="Assign or change a user's role",
@@ -153,28 +137,13 @@ class RoleAssignmentView(APIView):
 
         Admins cannot assign the Superadmin role. Technicians are not allowed to assign roles.
         """,
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            required=['first_name', 'new_role'],
-            properties={
-                'first_name': openapi.Schema(type=openapi.TYPE_STRING, description="First name of the user whose role is to be changed"),
-                'new_role': openapi.Schema(
-                    type=openapi.TYPE_STRING,
-                    enum=['Superadmin', 'Admin', 'Technician'],
-                    description="The new role to assign to the user. Options: 'Superadmin', 'Admin', 'Technician'"
-                )
-            },
-            example={
-                "first_name": "john_doe",
-                "new_role": "Admin"
-            }
-        ),
+        request_body=RoleAssignmentSerializer,
         responses={
             200: openapi.Response(
                 description="Role changed successfully.",
                 examples={
                     "application/json": {
-                        "message": "Role changed successfully for user john_doe.",
+                        "message": "Role changed successfully for user john.doe@example.com.",
                         "new_role": "Admin"
                     }
                 }
@@ -183,7 +152,6 @@ class RoleAssignmentView(APIView):
                 description="Bad Request - Validation Error",
                 examples={
                     "application/json": {
-                        "first_name": ["User with this first name does not exist."],
                         "new_role": ["Invalid role specified."]
                     }
                 }
@@ -197,23 +165,29 @@ class RoleAssignmentView(APIView):
                 }
             ),
         },
-        tags=["Authentication"]
+        tags=["User Management"]
     )
-    def post(self, request, *args, **kwargs):
-        # Validate the request data with the RoleAssignmentSerializer
-        serializer = RoleAssignmentSerializer(data=request.data, context={'request': request})
+    def put(self, request, *args, **kwargs):
+        response = super().put(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            user = self.get_object()
+            
+            full_name = user.get_full_name()
+            
+            # Log the role assignment
+            AuditLog.objects.create(
+                user=self.request.user,
+                action=AuditLog.ActionChoices.ASSIGN_ROLE,
+                target_user=user,
+                details=_('Role changed to %(new_role)s for user %(full_name)s.') % {
+                    'new_role': user.get_user_role_display(),
+                    'full_name': full_name,
+                }
+            )
+            logger.info(f"User {self.request.user.get_full_name()} changed role for user {full_name} to {user.get_user_role_display()}.")
+        return response
 
-        if serializer.is_valid():
-            # Call the serializer's update method to handle the role assignment
-            user = serializer.save()
 
-            return Response({
-                "message": f"Role changed successfully for user {user.username}.",
-                "new_role": user.get_user_role_display(),
-            }, status=status.HTTP_200_OK)
-
-        # If serializer is not valid, return the errors
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 
@@ -226,276 +200,124 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
     
     
+# class PasswordResetRequestThrottle(AnonRateThrottle):
+#     rate = '5/hour'
 
-#     @swagger_auto_schema(
-#         operation_summary="Obtain JWT access and refresh tokens",
-#         operation_description="""
-#         Authenticated users can obtain JWT access and refresh tokens. 
-#         The tokens are set in HttpOnly cookies.
-#         """,
-#         request_body=openapi.Schema(
-#             type=openapi.TYPE_OBJECT,
-#             required=["email", "password"],
-#             properties={
-#                 "email": openapi.Schema(
-#                     type=openapi.TYPE_STRING,
-#                     description="User's email address",
-#                     example="user@example.com"
-#                 ),
-#                 "password": openapi.Schema(
-#                     type=openapi.TYPE_STRING,
-#                     description="User's password",
-#                     example="password123"
-#                 ),
-#             },
-#             example={
-#                 "email": "user@example.com",
-#                 "password": "password123"
-#             }
-#         ),
-#         responses={
-#             200: openapi.Response(
-#                 description="Tokens obtained successfully and set in HttpOnly cookies.",
-#                 examples={
-#                     "application/json": {
-#                         "message": "Access token and refresh token set in HttpOnly cookie."
-#                     }
-#                 }
-#             ),
-#             400: openapi.Response(
-#                 description="Bad Request - Failed to generate tokens.",
-#                 examples={
-#                     "application/json": {
-#                         "error": "Failed to generate tokens."
-#                     }
-#                 }
-#             ),
-#             401: openapi.Response(
-#                 description="Unauthorized - Invalid credentials.",
-#                 examples={
-#                     "application/json": {
-#                         "error": "Invalid credentials."
-#                     }
-#                 }
-#             ),
-#         },
-#         tags=["Authentication"]
-#     )
-#     def post(self, request, *args, **kwargs):
-#         # Call the default TokenObtainPairView to generate tokens
-#         response = super().post(request, *args, **kwargs)
-
-#         if response.status_code == 200:
-#             # Extract the tokens from the response
-#             tokens = response.data
-#             access_token = tokens.get('access')
-#             refresh_token = tokens.get('refresh')
-#             csrf_token = get_token(request)
-
-#             # Ensure the tokens exist
-#             if not access_token or not refresh_token:
-#                 return Response({"error": "Failed to generate tokens."}, status=status.HTTP_400_BAD_REQUEST)
-            
-#             # response = Response({"message": "Access token and refresh token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
-            
-#             # Set access token in HttpOnly cookie
-#             response.set_cookie(
-#                 key='access_token',
-#                 value=access_token,
-#                 httponly=True,
-#                 secure=secure_cookie,  # Ensure secure cookie in production
-#                 samesite='Lax' if settings.DEBUG else 'None',  # SameSite attribute
-#                 max_age=access_token_lifetime,  # Expiration matches access token lifetime
-#             )
-
-#             # Set refresh token in HttpOnly cookie
-#             response.set_cookie(
-#                 key='refresh_token',
-#                 value=refresh_token,
-#                 httponly=True,
-#                 secure=secure_cookie,  # Ensure secure cookie in production
-#                 samesite='Lax' if settings.DEBUG else 'None',  # SameSite attribute
-#                 max_age=refresh_token_lifetime,  # Expiration matches refresh token lifetime
-#             )
-
-#             response.set_cookie(
-#                 key='csrftoken',
-#                 value=csrf_token,
-#                 httponly=False,  # Needs to be readable by the frontend
-#                 secure=secure_cookie,  # Set secure=True in production
-#                 samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-#                 max_age=access_token_lifetime,  # Set cookie expiration to match access token
-#             )
-            
-#             return response
-
-#         # If the request fails (e.g., wrong credentials)
-#         return Response({"error": "Invalid credentials."}, status=response.status_code)
+class CustomPasswordResetRequestView(ResetPasswordRequestToken):
+    throttle_classes = []
     
+    def get_user_by_email(self, email):
+        # Use a case-insensitive lookup and strip any whitespace
+        email = email.strip()
+        try:
+            return User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            raise ValidationError("We couldn't find an account associated with that email. Please try a different e-mail address.")
 
-# class CustomTokenRefreshView(APIView):
-#     """
-#     API endpoint for refreshing JWT access tokens.
-#     Uses the refresh token stored in cookies to generate a new access token.
-#     """
 
-#     @swagger_auto_schema(
-#         operation_summary="Refresh JWT access token",
-#         operation_description="""
-#         This API endpoint allows users to refresh their JWT access token using the refresh token stored in HttpOnly cookies.
-#         The response will include:
-        
-#         - A new access token (set in an HttpOnly cookie).
-#         - A new CSRF token (sent in a readable cookie for frontend protection).
-        
-#         No request body is required as the refresh token is retrieved from the cookies.
-#         """,
-#         request_body=None,  # No request body required
-#         responses={
-#             200: openapi.Response(
-#                 description="Access token refreshed successfully. Tokens are set in HttpOnly cookies.",
-#                 examples={
-#                     "application/json": {
-#                         "message": "New access token set in HttpOnly cookie."
-#                     }
-#                 },
-#                 headers={
-#                     "Set-Cookie": openapi.Schema(
-#                         description="JWT Access token and CSRF token set in cookies.",
-#                         type="string"
-#                     )
-#                 }
-#             ),
-#             400: openapi.Response(
-#                 description="Refresh token not found or invalid.",
-#                 examples={
-#                     "application/json": {
-#                         "error": "Refresh token not found."
-#                     }
-#                 }
-#             ),
-#             401: openapi.Response(
-#                 description="Unauthorized. The refresh token may have expired or been blacklisted.",
-#                 examples={
-#                     "application/json": {
-#                         "detail": "Token is invalid or expired."
-#                     }
-#                 }
-#             ),
-#         },
-#         tags=['Authentication'],
-#     )
-#     def post(self, request, *args, **kwargs):
-#         # Get the refresh token from the cookies
-#         refresh_token = request.COOKIES.get('refresh_token')
-#         secure_cookie = not settings.DEBUG  # Set secure=True in production
+class PasswordChangeView(generics.UpdateAPIView):
+    """
+    An endpoint for changing password for authenticated users.
+    """
+    serializer_class = PasswordChangeSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
-#         if not refresh_token:
-#             return Response({"error": "Refresh token not found"}, status=status.HTTP_400_BAD_REQUEST)
+    def get_object(self):
+        return self.request.user
 
-#         try:
-#             # Validate the refresh token
-#             refresh = RefreshToken(refresh_token)
+    @swagger_auto_schema(
+        operation_description="Change password for the authenticated user.",
+        responses={
+            200: openapi.Response(
+                description="Password changed successfully.",
+                examples={
+                    "application/json": {"detail": "Your password has been changed successfully."}
+                }
+            ),
+            400: openapi.Response(
+                description="Bad Request due to invalid input.",
+                examples={
+                    "application/json": {
+                        "old_password": ["The old password is incorrect."],
+                        "new_password": ["This password is too short.", "This password is too common."]
+                    }
+                }
+            )
+        },
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'old_password': openapi.Schema(type=openapi.TYPE_STRING, description="Old Password", format="password"),
+                'new_password': openapi.Schema(type=openapi.TYPE_STRING, description="New Password", format="password"),
+            },
+            required=['old_password', 'new_password']
+        ),
+        security=[{'Bearer': []}], 
+        tags=['User Account Management']
+    )
+    def update(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data, context={'request': request})
 
-#             # Extract custom claims from refresh token payload, excluding standard claims
-#             custom_claims = {key: value for key, value in refresh.payload.items() 
-#                              if key not in ['token_type', 'exp', 'iat', 'jti']}
+        if serializer.is_valid():
+            user = self.get_object()
+            serializer.save()
 
-#             # Generate a new access token
-#             new_access_token = refresh.access_token
+            # Send password change email notification
+            send_password_change_email(user.id)
 
-#             # Add custom claims to the new access token
-#             for key, value in custom_claims.items():
-#                 new_access_token[key] = value
+            # Log the password change
+            AuditLog.objects.create(
+                user=user,
+                action=AuditLog.ActionChoices.UPDATE,
+                target_user=user,
+                details=_('User changed password.')
+            )
+            logger.info(f"User {user.get_full_name()} changed their password.")
 
-#             # Handle refresh token rotation if enabled
-#             if api_settings.ROTATE_REFRESH_TOKENS:
-#                 # Generate a new refresh token
-#                 new_refresh_token = RefreshToken()
+            return Response({"detail": _("Your password has been changed successfully.")}, status=status.HTTP_200_OK)
 
-#                 # Add custom claims to the new refresh token
-#                 for key, value in custom_claims.items():
-#                     new_refresh_token[key] = value
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-#                 # Set the new refresh token in HttpOnly cookie
-#                 response = Response({"message": "New access token and refresh token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
-#                 response.set_cookie(
-#                     key='refresh_token',
-#                     value=str(new_refresh_token),  # Use the new refresh token
-#                     httponly=True,
-#                     secure=secure_cookie,  # Set secure=True in production
-#                     samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-#                     max_age=refresh_token_lifetime,  # Set cookie expiration to match refresh token
-#                 )
-
-#                 # Blacklist the old refresh token after the new one is securely sent
-#                 refresh.blacklist()
-#             else:
-#                 response = Response({"message": "New access token set in HttpOnly cookie."}, status=status.HTTP_200_OK)
-
-#             # Set the new access token in HttpOnly cookie
-#             response.set_cookie(
-#                 key='access_token',
-#                 value=str(new_access_token),
-#                 httponly=True,
-#                 secure=secure_cookie,  # Set secure=True in production
-#                 samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-#                 max_age=access_token_lifetime,  # Set cookie expiration to match access token
-#             )
-
-#             # Generate and set a new CSRF token
-#             csrf_token = get_token(request)
-#             response.set_cookie(
-#                 key='csrftoken',
-#                 value=csrf_token,
-#                 httponly=False,  # Needs to be readable by the frontend
-#                 secure=secure_cookie,  # Set secure=True in production
-#                 samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-#                 max_age=access_token_lifetime,  # Set cookie expiration to match access token
-#             )
-
-#             # Return the new access token for debugging in development
-#             if settings.DEBUG:
-#                 response.data['access_token'] = str(new_access_token)
-
-#             return response
-
-#         except Exception as e:
-#             return Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
-        
         
 
 class UserDetailView(generics.RetrieveUpdateAPIView):
     """
     Retrieve or update the details of a user.
-    Admins and Superusers can update user profiles, but they cannot update passwords.
-    Regular users cannot edit their own profile.
+    Admins and Superusers can update Technician profiles, but they cannot update their passwords.
+    Technicians users cannot edit their own profile.
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdminUser]
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
 
     def get_object(self):
-        """
-        Allow Admins and Superusers to edit any user profile, but regular users cannot edit their own profile.
-        """
         obj = super().get_object()
-        if self.request.user.user_role == 3:  # Regular user
-            raise PermissionDenied("You cannot update your own profile. Contact an Admin for changes.")
+        if self.request.user.user_role == User.UserRole.TECHNICIAN and self.request.user == obj:
+            raise PermissionDenied(_("You cannot update your own profile. Contact an Admin for changes."))
         return obj
 
     def update(self, request, *args, **kwargs):
         user = self.get_object()
 
-        # Prevent Admins and Superusers from editing password via this view
-        non_editable_fields = ['password', 'is_superuser']
-
-        # Remove any fields that shouldn't be editable
+        # Prevent editing of certain fields
+        non_editable_fields = ['password', 'is_superuser', 'email', 'user_role']
         for field in non_editable_fields:
             if field in request.data:
                 request.data.pop(field)
 
-        return super().update(request, *args, **kwargs)
+        response = super().update(request, *args, **kwargs)
+
+        if response.status_code == status.HTTP_200_OK:
+            # Log the user update
+            AuditLog.objects.create(
+                user=self.request.user,
+                action=AuditLog.ActionChoices.UPDATE,
+                target_user=user,
+                details=_('User details updated.')
+            )
+            logger.info(f"User {self.request.user.get_full_name()} updated details for user {user.get_full_name()}.")
+
+        return response
 
     @swagger_auto_schema(
         operation_summary="Retrieve User Details",
@@ -634,188 +456,23 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
     
-    
-    
-class PasswordChangeView(views.APIView):
-    """
-    API endpoint for changing the user's password.
-    Allows authenticated users (regular users, admins, and superadmins) to change their own password.
-    """
-    permission_classes = [permissions.IsAuthenticated]
-
-    @swagger_auto_schema(
-        operation_summary="Change User Password",
-        operation_description="Allows authenticated users to change their password by providing the old password and the new password.",
-        request_body=PasswordChangeSerializer,
-        responses={
-            200: openapi.Response(
-                description="Password updated successfully.",
-                examples={
-                    "application/json": {
-                        "message": "Password updated successfully."
-                    }
-                }
-            ),
-            400: openapi.Response(
-                description="Bad Request - Validation Error",
-                examples={
-                    "application/json": {
-                        "old_password": ["The old password is incorrect."],
-                        "new_password": ["The password must be at least 8 characters long."]
-                    }
-                }
-            )
-        },
-        tags=["Password Management"]
-    )
-    def post(self, request):
-        """
-        Handle password change for authenticated users.
-        """
-        serializer = PasswordChangeSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            user = request.user  # Get the currently authenticated user
-            new_password = serializer.validated_data['new_password']
-            user.set_password(new_password)  # Update the user's password
-            user.save()
-            return Response({"message": "Password updated successfully."}, status=status.HTTP_200_OK)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class PasswordResetRequestView(views.APIView):
-    """
-    API endpoint to request a password reset via email.
-    Accepts user's email and frontend URL, sends a reset link if the email is valid.
-    """
-    permission_classes = [permissions.AllowAny]
-
-    @swagger_auto_schema(
-        operation_summary="Request Password Reset",
-        operation_description="Allows users to request a password reset by providing their email and frontend URL for redirect. A reset link will be sent to the provided email if valid.",
-        request_body=PasswordResetRequestSerializer,
-        responses={
-            200: openapi.Response(
-                description="Password reset email sent successfully.",
-                examples={
-                    "application/json": {
-                        "message": "Password reset email sent."
-                    }
-                }
-            ),
-            400: openapi.Response(
-                description="Bad Request - Invalid email or other validation errors.",
-                examples={
-                    "application/json": {
-                        "email": ["No user is associated with this email address."]
-                    }
-                }
-            ),
-            500: openapi.Response(
-                description="Internal Server Error - Failed to send email.",
-                examples={
-                    "application/json": {
-                        "error": "Failed to send password reset email."
-                    }
-                }
-            )
-        },
-        tags=["Password Management"]
-    )
-    def post(self, request):
-        """
-        Handle password reset requests. Send an email with a password reset link if the provided email is valid.
-        """
-        serializer = PasswordResetRequestSerializer(data=request.data)
-        if serializer.is_valid():
-            email = serializer.validated_data['email']
-            frontend_url = serializer.validated_data['frontend_url']  # Get the frontend URL from the request
-            
-            user = User.objects.filter(email=email).first()
-            if user:
-                # Generate a one-time-use token and UID for password reset
-                token = default_token_generator.make_token(user)
-                uid = urlsafe_base64_encode(force_bytes(user.pk))
-
-                # Construct the password reset URL using the frontend URL
-                reset_url = f"{frontend_url}/{uid}/{token}/"
-
-                try:
-                    # Send the password reset email (this could be a background task)
-                    send_password_reset_email(user.id, reset_url)
-                except Exception as e:
-                    logger.error(f"Failed to send email: {e}")
-                    return Response({"error": "Failed to send password reset email."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-                return Response({"message": "Password reset email sent."}, status=status.HTTP_200_OK)
-
-        # If serializer validation fails
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-
-class PasswordResetView(views.APIView):
-    """
-    Reset a user's password.
-    """
-    permission_classes = [permissions.AllowAny]
-
-    @swagger_auto_schema(
-        operation_summary="Reset User Password",
-        operation_description="Allows users to reset their password by providing a valid token and setting a new password.",
-        request_body=PasswordResetSerializer,
-        responses={
-            200: openapi.Response(
-                description="Password has been reset successfully.",
-                examples={
-                    "application/json": {
-                        "message": "Password has been reset successfully."
-                    }
-                }
-            ),
-            400: openapi.Response(
-                description="Bad Request - Invalid token or user ID.",
-                examples={
-                    "application/json": {
-                        "message": "Invalid token or user ID."
-                    }
-                }
-            ),
-        },
-        tags=["Password Management"]
-    )
-    def post(self, request, uidb64=None, token=None):
-        """
-        Handle password reset.
-        """
-        serializer = PasswordResetSerializer(data=request.data)
-        if serializer.is_valid():
-            # Decode the user's ID from the base64-encoded UID
-            try:
-                uid = urlsafe_base64_decode(uidb64).decode()
-                user = User.objects.get(pk=uid)
-            except (TypeError, ValueError, OverflowError, User.DoesNotExist):
-                user = None
-
-            # Check if the token is valid
-            if user is not None and default_token_generator.check_token(user, token):
-                # Set the new password
-                new_password = serializer.validated_data['new_password']
-                user.set_password(new_password)
-                user.save()
-
-                return Response({"message": "Password has been reset successfully."}, status=status.HTTP_200_OK)
-            else:
-                return Response({"message": "Invalid token or user ID."}, status=status.HTTP_400_BAD_REQUEST)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
  
 
 @swagger_auto_schema(
     method='post',
     operation_summary="Log Out User",
     operation_description="""
-    Logs out the user by blacklisting the refresh token and clearing the session cookies.
+    Logs out the user by blacklisting the refresh token.
     """,
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'refresh_token': openapi.Schema(type=openapi.TYPE_STRING, description="Refresh token"),
+        },
+        required=['refresh_token']
+    ),
     responses={
         200: openapi.Response(
             description="Logged out successfully.",
@@ -837,29 +494,35 @@ class PasswordResetView(views.APIView):
     tags=["Authentication"]
 )
 @api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
 def logout_view(request):
     """
-    View to log out the user by blacklisting the refresh token and clearing session cookies.
+    View to log out the user by blacklisting the refresh token.
     """
-    # Get the refresh token from the cookies
-    refresh_token = request.COOKIES.get('refresh_token')
-    if not refresh_token:
-        return Response({"error": "No refresh token provided"}, status=400)
+    refresh = request.data.get('refresh')
+    if not refresh:
+        return Response({"error": "No refresh token provided"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         # Blacklist the refresh token
-        token = RefreshToken(refresh_token)
+        token = RefreshToken(refresh)
         token.blacklist()
 
-        # Clear the cookies 
-        response = Response({"message": "Logged out successfully"}, status=200)
-        response.delete_cookie('access_token')
-        response.delete_cookie('refresh_token')
-        response.delete_cookie('csrftoken')  
-        return response
+        # Log the logout action
+        AuditLog.objects.create(
+            user=request.user,
+            action=AuditLog.ActionChoices.LOGOUT,
+            target_user=request.user,
+            details=_('User logged out.')
+        )
+        logger.info(f"User {request.user.get_full_name()} logged out.")
+
+        return Response({"message": "Logged out successfully"}, status=status.HTTP_200_OK)
 
     except Exception as e:
-        return Response({"error": str(e)}, status=400)
+        user_full_name = request.user.get_full_name() if request.user.is_authenticated else 'Anonymous'
+        logger.error(f"Error during logout for user {user_full_name}: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
 
 
@@ -870,7 +533,7 @@ class UserListView(ListAPIView):
     Technicians cannot access this view.
     """
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
 
     @swagger_auto_schema(
         operation_summary="List Users",
@@ -919,16 +582,14 @@ class UserListView(ListAPIView):
         tags=["User Management"]
     )
     def get(self, request, *args, **kwargs):
-        """
-        Handle GET requests to list users based on their role.
-        """
         queryset = self.get_queryset()
         serializer = self.get_serializer(queryset, many=True)
+        logger.info(f"User {request.user.get_full_name()} accessed the user list.")
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_superuser or user.user_role == User.UseRole.ADMIN:
+        if user.is_superuser or user.user_role == User.UserRole.ADMIN:
             # Superusers and Admins can see all users except superusers
             return User.objects.filter(is_superuser=False).order_by('id')
         else:
@@ -965,21 +626,15 @@ class UserListView(ListAPIView):
     tags=["User Management"]
 )
 @api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])  # Ensure the user is authenticated first
+@permission_classes([permissions.IsAuthenticated, IsAdminOrSuperAdmin])
 def total_users_view(request):
     """
     Get the total number of users.
     Only accessible by Admins and Superusers.
     """
-    user = request.user
-
-    # Check if the user is a superuser or an admin
-    if user.is_superuser or user.user_role == User.UseRole.ADMIN:
-        total_users = User.objects.count()
-        return Response({"total_users": total_users})
-    else:
-        # If the user is not a superuser or admin, raise PermissionDenied
-        raise PermissionDenied(detail="You do not have permission to view this resource.")
+    total_users = User.objects.count()
+    logger.info(f"User {request.user.get_full_name()} retrieved total user count: {total_users}.")
+    return Response({"total_users": total_users})
 
 
 class AuditLogView(ListAPIView):
@@ -988,13 +643,8 @@ class AuditLogView(ListAPIView):
     Only accessible by Admins and Superadmins.
     """
     serializer_class = AuditLogSerializer
-    permission_classes = [permissions.IsAuthenticated]  # Only authenticated users can access
+    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_superuser or user.user_role == User.UseRole.ADMIN:
-            # Admins and Superadmins can view all audit logs
-            return AuditLog.objects.all().order_by('-timestamp')
-        else:
-            # Technicians cannot access audit logs, raise PermissionDenied
-            raise PermissionDenied(detail="You do not have permission to view audit logs.")
+        logger.info(f"User {self.request.user.get_full_name()} accessed the audit logs.")
+        return AuditLog.objects.all().order_by('-timestamp')
