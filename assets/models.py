@@ -1,60 +1,74 @@
 from django.db import models
 from django.utils.translation import gettext_lazy as _
-from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.utils.text import slugify
+from autoslug import AutoSlugField
+from model_utils.models import StatusModel, SoftDeletableModel, TimeStampedModel
+from model_utils import Choices
+from model_utils.managers import QueryManager
 from auditlog.registry import auditlog
-from auditlog.models import AuditlogHistoryField
-from dirtyfields import DirtyFieldsMixin 
 from cloudinary.models import CloudinaryField
-from django.utils import timezone
-from decimal import Decimal
-import itertools
-
-
-
+from django.db.models import Q, UniqueConstraint
 
 User = get_user_model()
 
-class AssetStatus(models.TextChoices):
-    ACTIVE = 'active', _('Active')
-    INACTIVE = 'inactive', _('Inactive')
-    REPAIR = 'repair', _('Under Maintenance')
-    DECOMMISSIONED = 'decommissioned', _('Decommissioned')
+class ConditionalValidationMixin:
+    def save(self, *args, **kwargs):
+        if self.status != self.STATUS.draft:
+            self.full_clean()
+        super().save(*args, **kwargs)
 
-class DepartmentStatus(models.TextChoices):
-    DRAFT = 'draft', 'Draft'
-    PUBLISHED = 'published', 'Published'
-    
-    
-
-class Department(DirtyFieldsMixin, models.Model):
+class Department(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStampedModel):
     name = models.CharField(max_length=255, unique=True)
-    slug = models.SlugField(max_length=255, unique=True)
-    head = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='head_of_department')
+    slug = AutoSlugField(populate_from='name', unique=True, max_length=255)
+    head = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name='head_of_department',
+        blank=True,
+        null=True
+    )
     contact_phone = models.CharField(max_length=20, blank=True, null=True)
     contact_email = models.EmailField(blank=True, null=True)
-    status = models.CharField(max_length=20, choices=DepartmentStatus.choices, default=DepartmentStatus.DRAFT)
-    is_draft = models.BooleanField(default=False)  # Track if the department is in draft status
+    STATUS = Choices('draft', 'published')
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(
+                fields=['name'],
+                condition=Q(status='published'),
+                name='unique_department_name_when_published'
+            )
+        ]
+    
+    # Custom managers
+    objects = models.Manager()
+    published = QueryManager(status=STATUS.published)
+    draft = QueryManager(status=STATUS.draft)
+        
+    def publish(self):
+        if self.status != self.STATUS.published:
+            self.status = self.STATUS.published
+            self.save()
+
 
     def __str__(self):
         return self.name or 'Unknown Department'
-    
+
     @property
     def total_assets(self):
         return self.assets.count()
 
     @property
     def total_active_assets(self):
-        return self.assets.filter(status='active').count()
+        return self.assets.filter(operational_status='active').count()
 
     @property
     def total_archive_assets(self):
-        return self.assets.filter(is_archived=True).count()
+        return self.assets.filter(is_removed=True).count()
 
     @property
     def total_assets_under_maintenance(self):
-        return self.assets.filter(status='repair').count()
+        return self.assets.filter(operational_status='under_maintenance').count()
 
     @property
     def total_commissioned_assets(self):
@@ -62,76 +76,87 @@ class Department(DirtyFieldsMixin, models.Model):
 
     @property
     def total_decommissioned_assets(self):
-        return self.assets.filter(status='decommissioned').count()
-    
-
-def upload_asset_image(instance, filename):
-    """
-    Uploads a product image to a path that includes the department and asset names.
-    """
-    return f'Assets/{slugify(instance.department.name)}/{slugify(instance.name)}/{filename}'
+        return self.assets.filter(operational_status='decommissioned').count()
 
 
-
-class Asset(DirtyFieldsMixin, models.Model):  # Include DirtyFieldsMixin
+class Asset(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStampedModel):
     name = models.CharField(max_length=255)
-    device_type = models.CharField(max_length=255, null=True, blank=True)
-    embossment_id = models.CharField(max_length=100, unique=True)
-    status = models.CharField(max_length=20, choices=AssetStatus.choices, default=AssetStatus.ACTIVE)
-    department = models.ForeignKey(Department, related_name='assets', on_delete=models.CASCADE)
+    device_type = models.CharField(max_length=255, blank=True, null=True)
+    embossment_id = models.CharField(max_length=100)
+    department = models.ForeignKey(
+        Department,
+        related_name='assets',
+        on_delete=models.CASCADE
+    )
+    OPERATIONAL_STATUS = Choices(
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+        ('under_maintenance', 'Under Maintenance'),
+        ('decommissioned', 'Decommissioned')
+    )
+    operational_status = models.CharField(
+        max_length=20,
+        choices=OPERATIONAL_STATUS,
+        default=OPERATIONAL_STATUS.inactive
+    )
     quantity = models.IntegerField(default=1)
-    model = models.CharField(max_length=100, null=True, blank=True)
-    manufacturer = models.CharField(max_length=100, null=True, blank=True)
-    serial_number = models.CharField(max_length=100, unique=True)
-    embossment_date = models.DateField(null=True, blank=True)
-    manufacturing_date = models.DateField(null=True, blank=True)
-    description = models.TextField()
-    image = CloudinaryField('image', null=True, blank=True, resource_type='image', folder='assets', use_filename=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    commission_date = models.DateField(null=True, blank=True)
-    decommission_date = models.DateField(null=True, blank=True)
-    is_archived = models.BooleanField(default=False)
-    added_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='assets')
-    is_draft = models.BooleanField(default=False)  # New field to track if the asset is in draft
-    history = AuditlogHistoryField()
+    model = models.CharField(max_length=100)
+    manufacturer = models.CharField(max_length=100)
+    serial_number = models.CharField(max_length=100)
+    embossment_date = models.DateField()
+    manufacturing_date = models.DateField()
+    description = models.TextField(blank=True, null=True)
+    image = CloudinaryField(
+        'image',
+        blank=True,
+        null=True,
+        resource_type='image',
+        folder='assets',
+        unique_filename=True
+    )
+    commission_date = models.DateField()
+    decommission_date = models.DateField(blank=True, null=True)
+    added_by = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='assets'
+    )
+    STATUS = Choices('draft', 'published')  # Workflow status
+
+    class Meta:
+        verbose_name = _('Asset')
+        verbose_name_plural = _('Assets')
+        constraints = [
+            UniqueConstraint(
+                fields=['embossment_id'],
+                condition=Q(status='published'),
+                name='unique_embossment_id_when_published'
+            ),
+            UniqueConstraint(
+                fields=['serial_number'],
+                condition=Q(status='published'),
+                name='unique_serial_number_when_published'
+            )
+        ]
+
+
+    objects = models.Manager()  # The default manager
+    published = QueryManager(status=STATUS.published)
+    draft = QueryManager(status=STATUS.draft)
+    active = QueryManager(operational_status='active')
+    inactive = QueryManager(operational_status='inactive')
+    under_maintenance = QueryManager(operational_status='under_maintenance')
+    decommissioned = QueryManager(operational_status='decommissioned')
+    
+    def publish(self):
+        if self.status != self.STATUS.published:
+            self.status = self.STATUS.published
+            self.save()
+
 
     def __str__(self):
         return self.name or "Unnamed Asset"
-
-
-    def change_status(self, new_status, reason=''):
-        if not self.is_draft:  # Only change status if not in draft
-            self.status = new_status
-            self.save()
-        else:
-            raise ValueError("Cannot change status of a draft asset.")
-        
-    def delete(self, *args, **kwargs):
-        """
-        Override the delete method to implement soft delete (archiving).
-        """
-        self.is_archived = True
-        self.save(update_fields=['is_archived'])
-
-class ActionType(models.TextChoices):
-    CREATE = 'create', _('Create')
-    UPDATE = 'update', _('Update')
-    DELETE = 'delete', _('Delete')
-
-
-class ActionLog(models.Model):
-    action = models.CharField(max_length=10, choices=ActionType.choices, help_text=_("The type of action performed."))
-    asset = models.ForeignKey('Asset', on_delete=models.CASCADE, related_name="action_logs", help_text=_("The asset that the action was performed on."))
-    performed_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name="action_logs", help_text=_("The user who performed the action."))
-    timestamp = models.DateTimeField(auto_now_add=True, help_text=_("The time the action was logged."))
-    changes = models.TextField(help_text=_("A detailed description of what was changed."))
-    reason = models.TextField(help_text=_("The reason for the change."), blank=True)
-
-    def __str__(self):
-        return f"{self.action} on {self.timestamp} by {self.performed_by.username if self.performed_by else 'Unknown'}"
-
-
+    
 
 # Register models with auditlog
 auditlog.register(Asset)

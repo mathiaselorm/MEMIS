@@ -16,7 +16,6 @@ from pathlib import Path
 from decouple import config
 import cloudinary
 import cloudinary.uploader
-from cloudinary.utils import cloudinary_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -47,7 +46,7 @@ ALLOWED_HOSTS = ['*']
 EMAIL_BACKEND = 'accounts.utils.BrevoAPIBackend'
 
 
-FRONTEND_URL = 'https://yourfrontend.com' 
+FRONTEND_URL = 'http://localhost:5173/' 
 
 
 # Mailgun API configuration

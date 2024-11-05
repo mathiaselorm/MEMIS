@@ -1,146 +1,128 @@
-from rest_framework import serializers
-from .models import Asset, AssetStatus, Department, ActionLog, DepartmentStatus, ActionType
-from django.utils import timezone
-from rest_framework.exceptions import ValidationError
 from django.contrib.auth import get_user_model
-from django.db import transaction
+
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from auditlog.models import LogEntry
 
-
+from .models import Asset, Department
 
 User = get_user_model()
 
-
 class DepartmentSerializer(serializers.ModelSerializer):
-    head = serializers.SerializerMethodField()
+    head = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
+    head_name = serializers.SerializerMethodField()
     total_assets = serializers.ReadOnlyField()
     active_assets = serializers.ReadOnlyField(source='total_active_assets')
     archive_assets = serializers.ReadOnlyField(source='total_archive_assets')
     assets_under_maintenance = serializers.ReadOnlyField(source='total_assets_under_maintenance')
-    total_commissioned_assets = serializers.ReadOnlyField()
-    total_decommissioned_assets = serializers.ReadOnlyField()
-    is_draft = serializers.BooleanField(write_only=True, default=False)  # To manage drafts
+    total_commissioned_assets = serializers.ReadOnlyField(source='total_commissioned_assets')
+    total_decommissioned_assets = serializers.ReadOnlyField(source='total_decommissioned_assets')
+    is_draft = serializers.BooleanField(write_only=True, default=False)
+    status = serializers.CharField(read_only=True)
 
     class Meta:
         model = Department
         fields = [
-            'id', 'name', 'slug', 'head', 'contact_phone', 'contact_email',
+            'id', 'name', 'slug', 'head', 'head_name', 'contact_phone', 'contact_email',
             'total_assets', 'active_assets', 'archive_assets',
             'assets_under_maintenance', 'total_commissioned_assets', 'total_decommissioned_assets',
-            'is_draft'
+            'is_draft', 'status'
         ]
+        read_only_fields = ['slug']
 
-    def get_head(self, obj):
+    def get_head_name(self, obj):
         if obj.head:
-            return f"{obj.head.first_name} {obj.head.last_name}"
-        return None
+            return f"{obj.head.get_full_name()}" if obj.head else None
 
     def create(self, validated_data):
-        # Handle is_draft flag and assign the status accordingly
         is_draft = validated_data.pop('is_draft', False)
-        department = super().create(validated_data)
+        department = Department.objects.create(**validated_data)
 
         if is_draft:
-            department.status = DepartmentStatus.DRAFT  # Set status to draft
+            department.status = department.STATUS.draft
         else:
-            department.status = DepartmentStatus.PUBLISHED  # Set status to published
+            department.publish()
 
-        department.save()
         return department
 
     def update(self, instance, validated_data):
-        # Handle is_draft flag during updates
         is_draft = validated_data.pop('is_draft', False)
-        department = super().update(instance, validated_data)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
 
         if is_draft:
-            department.status = DepartmentStatus.DRAFT  # Set status to draft
+            instance.status = instance.STATUS.draft
         else:
-            department.status = DepartmentStatus.PUBLISHED  # Set status to published
+            instance.publish()
 
-        department.save()
-        return department
-    
-     
+        instance.save()
+        return instance
+
+
 class AssetSerializer(serializers.ModelSerializer):
-    department = serializers.SerializerMethodField()  
-    added_by = serializers.SerializerMethodField()
+    department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all())
+    added_by = serializers.StringRelatedField(read_only=True)
     image = serializers.ImageField(max_length=None, allow_empty_file=True, use_url=True, required=False)
+    is_draft = serializers.BooleanField(write_only=True, default=False)
+    status = serializers.CharField(read_only=True)
 
     class Meta:
         model = Asset
         fields = [
             'id', 'name', 'device_type', 'embossment_id', 'serial_number', 'status',
-            'department', 'quantity', 'manufacturer', 'model', 'description', 'image',
+            'operational_status', 'department', 'quantity', 'manufacturer', 'model', 'description', 'image',
             'embossment_date', 'manufacturing_date', 'commission_date',
-            'decommission_date', 'created_at', 'updated_at', 'is_archived', 'added_by', 'is_draft'
+            'decommission_date', 'created', 'modified', 'is_removed', 'added_by', 'is_draft'
         ]
-
-    def get_department(self, obj):
-        return obj.department.name if obj.department else None
-
-    def get_added_by(self, obj):
-        if obj.added_by:
-            return f"{obj.added_by.first_name} {obj.added_by.last_name}"
-        return None
+        read_only_fields = ['added_by', 'created', 'modified', 'is_removed']
 
     def create(self, validated_data):
         is_draft = validated_data.pop('is_draft', False)
-        asset = super().create(validated_data)
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['added_by'] = request.user
+        else:
+            raise ValidationError("User must be authenticated to add assets.")
+
+        asset = Asset.objects.create(**validated_data)
 
         if is_draft:
-            asset.status = AssetStatus.INACTIVE  # Set to inactive if it's a draft
+            asset.status = asset.STATUS.draft
         else:
-            asset.status = AssetStatus.ACTIVE
+            asset.publish()
 
-        asset.save()
         return asset
 
     def update(self, instance, validated_data):
         is_draft = validated_data.pop('is_draft', False)
-        asset = super().update(instance, validated_data)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
 
         if is_draft:
-            asset.status = AssetStatus.INACTIVE  # Maintain as inactive for drafts
+            instance.status = instance.STATUS.draft
         else:
-            asset.status = AssetStatus.ACTIVE
+            instance.publish()
 
-        asset.save()
-        return asset
-
+        instance.save()
+        return instance
 
     def validate(self, data):
-        """
-        Custom validation to prevent conflicting actions such as 
-        commissioning and decommissioning at the same time.
-        """
-        if self.instance and self.instance.is_draft:
-            if 'commission' in data or 'decommission' in data:
-                raise ValidationError("Cannot commission or decommission a draft asset.")
-        elif 'commission' in data and 'decommission' in data:
-            raise ValidationError("Cannot commission and decommission an asset simultaneously.")
+        if data.get('commission_date') and data.get('decommission_date'):
+            if data['commission_date'] > data['decommission_date']:
+                raise ValidationError("Commission date cannot be after decommission date.")
         return data
 
-    def change_asset_status(self, instance, status, date_field_name, date=None):
-        """
-        Helper method to change the asset's status and set the appropriate date field.
-        """
-        with transaction.atomic():
-            setattr(instance, 'status', status)
-            setattr(instance, date_field_name, date or timezone.now())
-            instance.save(update_fields=['status', date_field_name])
-    
 
 class AssetMinimalSerializer(serializers.ModelSerializer):
     department_name = serializers.ReadOnlyField(source='department.name')
 
     class Meta:
         model = Asset
-        fields = ['asset_id', 'name', 'device_type', 'embossment_id', 'department']
+        fields = ['id', 'name', 'device_type', 'embossment_id', 'department_name']
 
 
 class LogEntrySerializer(serializers.ModelSerializer):
-    actor = serializers.StringRelatedField()  # Shows the username or a string representation of the user
+    actor = serializers.SerializerMethodField()
     changes = serializers.SerializerMethodField()
 
     class Meta:
@@ -148,10 +130,7 @@ class LogEntrySerializer(serializers.ModelSerializer):
         fields = ['action', 'timestamp', 'object_repr', 'changes', 'actor']
 
     def get_changes(self, obj):
-        """
-        Generate a user-friendly sentence form of the changes made.
-        """
-        changes = obj.changes_dict
+        changes = obj.changes_dict or {}
         change_messages = []
 
         for field, values in changes.items():
@@ -162,13 +141,6 @@ class LogEntrySerializer(serializers.ModelSerializer):
         return "; ".join(change_messages) if change_messages else "No changes recorded."
 
     def get_actor(self, obj):
-        return obj.actor.get_full_name() if obj.actor else "Unknown User"
-    
-
-class ActionLogSerializer(serializers.ModelSerializer):
-    performed_by = serializers.StringRelatedField()  # Shows the username or a string representation of the user
-    action = serializers.ChoiceField(choices=ActionType.choices)  # Ensure it's serialized correctly
-
-    class Meta:
-        model = ActionLog
-        fields = ['action', 'asset', 'performed_by', 'timestamp', 'changes', 'reason']
+        if obj.actor:
+            return obj.actor.get_full_name()
+        return "Unknown User"
