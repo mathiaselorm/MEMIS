@@ -1,9 +1,10 @@
 from django.http import Http404
+from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
-from django.shortcuts import get_object_or_404
+from rest_framework.exceptions import ValidationError
 
 from .models import Asset, Department
 from auditlog.models import LogEntry
@@ -13,14 +14,14 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from accounts.permissions import IsAdminOrSuperAdmin
 
-# Removed imports related to ActionLog and AssetStatus since they no longer exist in models.py
+
 
 class DepartmentList(generics.ListCreateAPIView):
     """
     List all departments or create a new department.
     """
     serializer_class = DepartmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]  # All users can view
     queryset = Department.objects.all()
 
     def get_permissions(self):
@@ -34,8 +35,16 @@ class DepartmentList(generics.ListCreateAPIView):
     @swagger_auto_schema(
         operation_description="Retrieve a list of all departments. Only authenticated users can view the list.",
         responses={
-            200: DepartmentSerializer(many=True),
-            401: "Unauthorized access."
+            200: openapi.Response(
+                description="List of all departments.",
+                schema=DepartmentSerializer(many=True)
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={
+                    "application/json": {"detail": "Authentication credentials were not provided."}
+                }
+            )
         }
     )
     def get(self, request, *args, **kwargs):
@@ -45,14 +54,54 @@ class DepartmentList(generics.ListCreateAPIView):
         operation_description="Create a new department. Only staff users have permission to create.",
         request_body=DepartmentSerializer,
         responses={
-            201: DepartmentSerializer,
-            400: "Bad request - Invalid data submitted.",
-            403: "Permission denied - Only staff users can create departments.",
-            401: "Unauthorized - User is not authenticated."
+            201: openapi.Response(
+                description="Department successfully created.",
+                schema=DepartmentSerializer,
+                examples={
+                    "application/json": {
+                        "id": 1,
+                        "name": "Finance Department",
+                        "slug": "finance-department",
+                        "head": 3,
+                        "head_name": "John Doe",
+                        "contact_phone": "+123456789",
+                        "contact_email": "finance@example.com",
+                        "total_assets": 10,
+                        "active_assets": 5,
+                        "archive_assets": 2,
+                        "assets_under_maintenance": 1,
+                        "total_commissioned_assets": 8,
+                        "total_decommissioned_assets": 1,
+                        "is_draft": False,
+                        "status": "published"
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="Bad request - Invalid data submitted.",
+                examples={
+                    "application/json": {
+                        "name": ["This field is required."]
+                    }
+                }
+            ),
+            403: openapi.Response(
+                description="Permission denied - Only staff users can create departments.",
+                examples={
+                    "application/json": {"detail": "You do not have permission to perform this action."}
+                }
+            ),
+            401: openapi.Response(
+                description="Unauthorized - User is not authenticated.",
+                examples={
+                    "application/json": {"detail": "Authentication credentials were not provided."}
+                }
+            ),
         }
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
+
 
 
 class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
@@ -62,7 +111,6 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DepartmentSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     queryset = Department.objects.all()
-    lookup_field = 'identifier'
 
     def get_object(self):
         """
@@ -74,13 +122,40 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
     @swagger_auto_schema(
         operation_description="Retrieve a department by its ID or slug.",
         responses={
-            200: DepartmentSerializer,
-            404: "Department not found."
+            200: openapi.Response(
+                description="Department details retrieved successfully.",
+                schema=DepartmentSerializer,
+                examples={
+                    "application/json": {
+                        "id": 1,
+                        "name": "Finance Department",
+                        "slug": "finance-department",
+                        "head": 3,
+                        "head_name": "John Doe",
+                        "contact_phone": "+123456789",
+                        "contact_email": "finance@example.com",
+                        "total_assets": 10,
+                        "active_assets": 5,
+                        "archive_assets": 2,
+                        "assets_under_maintenance": 1,
+                        "total_commissioned_assets": 8,
+                        "total_decommissioned_assets": 1,
+                        "is_draft": False,
+                        "status": "published"
+                    }
+                }
+            ),
+            404: openapi.Response(
+                description="Department not found.",
+                examples={
+                    "application/json": {"detail": "Not found."}
+                }
+            ),
         },
         manual_parameters=[
             openapi.Parameter(
-                'identifier', openapi.IN_PATH,
-                description="ID or Slug of the department",
+                'identifier', openapi.IN_PATH, 
+                description="ID or Slug of the department", 
                 type=openapi.TYPE_STRING, required=True
             )
         ]
@@ -89,17 +164,51 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Update a department by its ID or slug. Supports partial updates.",
+        operation_description="Update a department by its ID or slug. Supports partial updates (e.g., updating a single field).",
         request_body=DepartmentSerializer(partial=True),
         responses={
-            200: DepartmentSerializer,
-            400: "Invalid data provided.",
-            404: "Department not found."
+            200: openapi.Response(
+                description="Department successfully updated.",
+                schema=DepartmentSerializer,
+                examples={
+                    "application/json": {
+                        "id": 1,
+                        "name": "Finance Department",
+                        "slug": "finance-department",
+                        "head": 3,
+                        "head_name": "John Doe",
+                        "contact_phone": "+123456789",
+                        "contact_email": "finance@example.com",
+                        "total_assets": 10,
+                        "active_assets": 5,
+                        "archive_assets": 2,
+                        "assets_under_maintenance": 1,
+                        "total_commissioned_assets": 8,
+                        "total_decommissioned_assets": 1,
+                        "is_draft": False,
+                        "status": "published"
+                    }
+                }
+            ),
+            400: openapi.Response(
+                description="Invalid data provided.",
+                examples={
+                    "application/json": {
+                        "name": ["This field may not be blank."]
+                    }
+                }
+            ),
+            404: openapi.Response(
+                description="Department not found.",
+                examples={
+                    "application/json": {"detail": "Not found."}
+                }
+            )
         },
         manual_parameters=[
             openapi.Parameter(
-                'identifier', openapi.IN_PATH,
-                description="ID or Slug of the department",
+                'identifier', openapi.IN_PATH, 
+                description="ID or Slug of the department", 
                 type=openapi.TYPE_STRING, required=True
             )
         ]
@@ -114,13 +223,20 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
     @swagger_auto_schema(
         operation_description="Delete a department by its ID or slug.",
         responses={
-            204: "Department successfully deleted.",
-            404: "Department not found."
+            204: openapi.Response(
+                description="Department successfully deleted."
+            ),
+            404: openapi.Response(
+                description="Department not found.",
+                examples={
+                    "application/json": {"detail": "Not found."}
+                }
+            )
         },
         manual_parameters=[
             openapi.Parameter(
-                'identifier', openapi.IN_PATH,
-                description="ID or Slug of the department",
+                'identifier', openapi.IN_PATH, 
+                description="ID or Slug of the department", 
                 type=openapi.TYPE_STRING, required=True
             )
         ]
@@ -129,7 +245,8 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         return super().delete(request, *args, **kwargs)
 
 
-class TotalDepartmentsView(APIView):
+
+class TotalDepartmentsView(generics.GenericAPIView):
     """
     View to return the total number of departments in the system.
     """
@@ -140,6 +257,9 @@ class TotalDepartmentsView(APIView):
         responses={
             200: openapi.Response(
                 description="Total count of departments.",
+                examples={
+                    'application/json': {'total_departments': 5}
+                },
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     properties={
@@ -150,13 +270,21 @@ class TotalDepartmentsView(APIView):
                     }
                 )
             ),
-            401: "Unauthorized - user must be authenticated.",
-            500: "Server error."
+            401: openapi.Response(
+                description="Unauthorized - user must be authenticated.",
+                examples={
+                    "application/json": {"detail": "Authentication credentials were not provided."}
+                }
+            ),
+            500: openapi.Response(
+                description="Server error."
+            )
         }
     )
     def get(self, request, *args, **kwargs):
         total_departments = Department.objects.count()
         return Response({'total_departments': total_departments})
+
 
 
 class AssetList(generics.ListCreateAPIView):

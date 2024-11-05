@@ -8,17 +8,19 @@ from .models import Asset, Department
 
 User = get_user_model()
 
+
+
 class DepartmentSerializer(serializers.ModelSerializer):
     head = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
     head_name = serializers.SerializerMethodField()
     total_assets = serializers.ReadOnlyField()
-    active_assets = serializers.ReadOnlyField(source='total_active_assets')
-    archive_assets = serializers.ReadOnlyField(source='total_archive_assets')
-    assets_under_maintenance = serializers.ReadOnlyField(source='total_assets_under_maintenance')
-    total_commissioned_assets = serializers.ReadOnlyField(source='total_commissioned_assets')
-    total_decommissioned_assets = serializers.ReadOnlyField(source='total_decommissioned_assets')
+    active_assets = serializers.ReadOnlyField()
+    archive_assets = serializers.ReadOnlyField()
+    assets_under_maintenance = serializers.ReadOnlyField()
+    total_commissioned_assets = serializers.ReadOnlyField()
+    total_decommissioned_assets = serializers.ReadOnlyField()
     is_draft = serializers.BooleanField(write_only=True, default=False)
-    status = serializers.CharField(read_only=True)
+    status = serializers.ChoiceField(choices=Department.STATUS, read_only=True)  # Use ChoiceField here
 
     class Meta:
         model = Department
@@ -64,7 +66,9 @@ class AssetSerializer(serializers.ModelSerializer):
     added_by = serializers.StringRelatedField(read_only=True)
     image = serializers.ImageField(max_length=None, allow_empty_file=True, use_url=True, required=False)
     is_draft = serializers.BooleanField(write_only=True, default=False)
-    status = serializers.CharField(read_only=True)
+    status = serializers.ChoiceField(choices=Asset.STATUS, read_only=True)  # Use ChoiceField here
+    operational_status = serializers.ChoiceField(choices=Asset.OPERATIONAL_STATUS)  # Add ChoiceField here
+
 
     class Meta:
         model = Asset
