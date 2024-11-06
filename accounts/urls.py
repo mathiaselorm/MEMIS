@@ -22,5 +22,5 @@ urlpatterns = [
     path('users/<int:id>/assign-role/', views.RoleAssignmentView.as_view(), name='assign-role'),
 
     # Audit logs endpoint
-    path('audit-logs/', views.AuditLogView.as_view(), name='audit-logs'),
+    path('users/audit-logs/', views.AuditLogView.as_view(), name='audit-logs'),
 ]

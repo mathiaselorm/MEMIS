@@ -13,7 +13,7 @@ urlpatterns = [
     # Asset endpoints
     path('assets/', views.AssetList.as_view(), name='asset-list'),
     path('assets/total/', views.TotalAssetsView.as_view(), name='total-assets'),
-    path('assets/maintenance/total/', views.TotalAssetsUnderMaintenanceView.as_view(), name='assets-under-maintenance'),
+    path('assets/under-maintenance/', views.TotalAssetsUnderMaintenanceView.as_view(), name='assets-under-maintenance'),
     path('assets/<int:pk>/', views.AssetDetail.as_view(), name='asset-detail'),
 
     # Tracking endpoints
@@ -21,5 +21,5 @@ urlpatterns = [
     path('assets/status/', views.TrackingByOperationalStatusView.as_view(), name='assets-by-operational-status'),
 
     # Audit log endpoint
-    path('audit-logs/', views.AuditLogView.as_view(), name='audit-log'),
+    path('assets/audit-logs/', views.AuditLogView.as_view(), name='audit-log'),
 ]

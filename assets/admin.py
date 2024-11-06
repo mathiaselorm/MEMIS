@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import Asset, Department
 
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'head', 'contact_phone', 'contact_email')
+    list_display = ('name', 'slug', 'head', 'status', 'contact_phone', 'contact_email')
     search_fields = ('name',)
     readonly_fields = ('slug',)
 
