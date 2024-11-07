@@ -20,6 +20,7 @@ User = get_user_model()
 class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the user model.
+    Provides additional validation and excludes superusers from updates.
     """
     user_role = serializers.SerializerMethodField()
 
@@ -29,26 +30,53 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'phone_number',
             'user_role', 'date_joined', 'last_login'
         )
-        read_only_fields = ('email', 'date_joined', 'last_login', 'user_role')
+        read_only_fields = ('date_joined', 'last_login')
         extra_kwargs = {
             'first_name': {'label': _("First Name")},
             'last_name': {'label': _("Last Name")},
             'phone_number': {'label': _("Phone Number")},
+            'email': {'label': _("Email Address")}
         }
 
     def get_user_role(self, obj):
+        """Return the display name of the user's role."""
         return obj.get_user_role_display()
 
-    def update(self, instance, validated_data):
-        # Prevent updating email and user_role
-        validated_data.pop('email', None)
-        validated_data.pop('user_role', None)
+    def validate_email(self, value):
+        """
+        Ensure the email is unique among non-superuser users.
+        """
+        if User.objects.filter(email=value).exclude(id=self.instance.id).exclude(is_superuser=True).exists():
+            raise ValidationError(_("This email is already in use by another account."))
+        return value
 
-        instance.first_name = validated_data.get('first_name', instance.first_name)
-        instance.last_name = validated_data.get('last_name', instance.last_name)
-        instance.phone_number = validated_data.get('phone_number', instance.phone_number)
+    def update(self, instance, validated_data):
+        """
+        Update and return an existing `User` instance, given the validated data.
+        Excludes changes to superuser status and sensitive fields.
+        """
+        uneditable_fields = {'password', 'is_superuser'}
+        validated_data = {k: v for k, v in validated_data.items() if k not in uneditable_fields}
+
+        # Map display string to internal role value if `user_role` is updated
+        if 'user_role' in validated_data:
+            new_role_display = validated_data.pop('user_role')
+            new_role_value = next(
+                (role.value for role in User.UseRole if role.label == new_role_display), 
+                None
+            )
+            if new_role_value is None:
+                raise ValidationError({"user_role": _("Invalid role provided.")})
+            instance.user_role = new_role_value
+
+        # Update other fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
         instance.save()
-        logger.info(f"User {instance.email} updated their profile successfully.")
+
+        # Log updates
+        updated_fields = ', '.join(validated_data.keys())
+        logger.info(f"User {instance.email} updated fields: {updated_fields} successfully.")
 
         return instance
 

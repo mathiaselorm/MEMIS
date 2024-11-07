@@ -136,7 +136,7 @@ class Asset(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeSta
             UniqueConstraint(
                 fields=['serial_number'],
                 condition=Q(status='published'),
-                name='unique_serial_number_when_published'
+                name='unique_assets_serial_number_when_published'
             )
         ]
 

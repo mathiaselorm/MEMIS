@@ -1,84 +1,63 @@
 from django.contrib import admin
-from simple_history.admin import SimpleHistoryAdmin
-from .models import Category, Item, Supplier
-
-# Base Admin for models with soft deletion and historical records
-class SoftDeletionAdmin(SimpleHistoryAdmin):
-    list_display = ('__str__', 'is_deleted', 'deleted_at', 'created_at', 'updated_at')
-    list_filter = ('is_deleted', 'created_at', 'updated_at')
-    search_fields = ('name', 'descriptive_name', 'batch_number')
-    actions = ['really_delete_selected', 'restore_selected']
-
-    def get_queryset(self, request):
-        """
-        Override to filter out soft-deleted objects unless requested.
-        """
-        qs = super().get_queryset(request)
-        if request.GET.get('is_deleted__exact') is not None:
-            return qs  # Include both deleted and non-deleted if filter is explicitly set
-        return qs.filter(is_deleted=False)  # Default to only showing non-deleted objects
-
-    def really_delete_selected(self, request, queryset):
-        """
-        Permanently delete selected objects (bypass soft delete).
-        """
-        queryset.delete()
-
-    really_delete_selected.short_description = "Permanently delete selected items"
-
-    def restore_selected(self, request, queryset):
-        """
-        Restore soft-deleted objects.
-        """
-        queryset.update(is_deleted=False, deleted_at=None)
-
-    restore_selected.short_description = "Restore selected items"
+from .models import Category, Item
 
 
-# Custom Category Admin
-@admin.register(Category)
-class CategoryAdmin(SoftDeletionAdmin):
-    list_display = ('name', 'description', 'created_at', 'updated_at', 'is_deleted')
-    search_fields = ['name', 'description']
-    list_filter = SoftDeletionAdmin.list_filter + ('name',)
-    actions = SoftDeletionAdmin.actions
+class StatusAdminMixin:
+    """
+    Mixin to add draft/publish actions to the admin panel for models with a status field.
+    """
+    actions = ['mark_as_draft', 'mark_as_published']
 
-    def get_queryset(self, request):
-        """
-        Override to include all objects (including deleted) for this model.
-        """
-        return super().get_queryset(request)
+    def mark_as_draft(self, request, queryset):
+        queryset.update(status=queryset.model.STATUS.draft)
+    mark_as_draft.short_description = "Mark selected items as Draft"
 
-
-# Custom Supplier Admin
-@admin.register(Supplier)
-class SupplierAdmin(SoftDeletionAdmin):
-    list_display = ('name', 'contact_info', 'created_at', 'updated_at', 'is_deleted')
-    search_fields = ['name', 'contact_info']
-    list_filter = SoftDeletionAdmin.list_filter + ('name',)
-    actions = SoftDeletionAdmin.actions
-
-    def get_queryset(self, request):
-        """
-        Override to include all objects (including deleted) for this model.
-        """
-        return super().get_queryset(request)
+    def mark_as_published(self, request, queryset):
+        for obj in queryset:
+            obj.publish()
+    mark_as_published.short_description = "Mark selected items as Published"
 
 
-# Custom Item Admin
-@admin.register(Item)
-class ItemAdmin(SoftDeletionAdmin):
-    list_display = ('item_id', 'descriptive_name', 'category', 'current_stock', 'stock_status', 'location', 'supplier', 'created_at', 'updated_at', 'is_deleted')
-    list_filter = SoftDeletionAdmin.list_filter + ('category', 'supplier', 'location')
-    search_fields = ['descriptive_name', 'batch_number', 'location']
-    actions = SoftDeletionAdmin.actions + ['additional_item_specific_action']
+class CategoryAdmin(StatusAdminMixin, admin.ModelAdmin):
+    list_display = ('name', 'slug', 'status', 'created', 'modified', 'is_removed')
+    search_fields = ('name',)
+    readonly_fields = ('slug', 'created', 'modified')
+    list_filter = ('status', 'is_removed')
 
-    def additional_item_specific_action(self, request, queryset):
-        """
-        Define any custom item-specific actions here.
-        """
-        # Example action logic (e.g., mass update, alert, etc.)
-        queryset.update(current_stock=0)  # This example resets stock to 0
-        self.message_user(request, "Selected items' stock has been reset to 0.")
+    def save_model(self, request, obj, form, change):
+        if not obj.pk:
+            # Save as draft if new, otherwise retain status
+            obj.status = obj.STATUS.draft
+        super().save_model(request, obj, form, change)
 
-    additional_item_specific_action.short_description = "Reset stock to 0 for selected items"
+
+class ItemAdmin(StatusAdminMixin, admin.ModelAdmin):
+    list_display = (
+        'descriptive_name', 'category', 'manufacturer', 'model_number', 'serial_number',
+        'status', 'location', 'current_stock', 'stock_status', 'is_removed'
+    )
+    search_fields = ('descriptive_name', 'serial_number', 'manufacturer', 'model_number')
+    list_filter = ('status', 'category', 'location', 'is_removed')
+    readonly_fields = ('created', 'modified', 'stock_status')
+    fieldsets = (
+        (None, {
+            'fields': ('descriptive_name', 'category', 'manufacturer', 'model_number', 'serial_number')
+        }),
+        ('Stock Information', {
+            'fields': ('current_stock', 'location', 'status', 'is_removed')
+        }),
+        ('Metadata', {
+            'fields': ('created', 'modified')
+        }),
+    )
+
+    def save_model(self, request, obj, form, change):
+        # Automatically set status as draft if creating new object
+        if not obj.pk:
+            obj.status = obj.STATUS.draft
+        super().save_model(request, obj, form, change)
+
+
+# Register the models with customized admin classes
+admin.site.register(Category, CategoryAdmin)
+admin.site.register(Item, ItemAdmin)

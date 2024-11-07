@@ -162,12 +162,12 @@ SIMPLE_JWT = {
 }
 
 
-# DJANGO_REST_PASSWORDRESET_TOKEN_CONFIG = {
-#     'CLASS': 'django_rest_passwordreset.tokens.RandomStringTokenGenerator',
-#     'OPTIONS': {
-#         'lifetime': timedelta(hours=1)
-#     }
-# }
+DJANGO_REST_PASSWORDRESET_TOKEN_CONFIG = {
+    'CLASS': 'django_rest_passwordreset.tokens.RandomStringTokenGenerator',
+    'OPTIONS': {
+        'lifetime': timedelta(hours=1)
+    }
+}
 
 
 # Cloudinary storage configuration using environment variables

@@ -65,6 +65,16 @@ class Item(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStam
     current_stock = models.IntegerField(validators=[MinValueValidator(0)])
     location = models.CharField(max_length=255)
     STATUS = Choices('draft', 'published')
+    
+    class Meta:
+        verbose_name_plural = "items"
+        constraints = [
+            UniqueConstraint(
+                fields=['serial_number'],
+                condition=Q(status='published'),
+                name='unique_item_serial_number_when_published'  # Updated constraint name
+            )
+        ]
 
     # Custom managers
     objects = models.Manager()

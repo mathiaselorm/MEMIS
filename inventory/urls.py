@@ -3,17 +3,16 @@ from . import views
 
 urlpatterns = [
     # Category Endpoints
-    path('categories/', views.CategoryList.as_view(), name='category-list'),
-    path('categories/<str:identifier>/', views.CategoryDetail.as_view(), name='category-detail'),
-    
-    # Category Items Endpoints
-    path('categories/<str:identifier>/items/', views.CategoryItemsList.as_view(), name='category-items'),
+    path('categories/', views.CategoryListCreateView.as_view(), name='category-list'),
+    path('categories/<str:identifier>/', views.CategoryDetailView.as_view(), name='category-detail'),
 
-    # Supplier Endpoints
-    path('suppliers/', views.SupplierList.as_view(), name='supplier-list'),
-    path('suppliers/<int:pk>/', views.SupplierDetail.as_view(), name='supplier-detail'),
-    
     # Item Endpoints
-    path('items/', views.ItemList.as_view(), name='item-list'),
-    path('items/<int:pk>/', views.ItemDetail.as_view(), name='item-detail'),
+    path('items/', views.ItemListCreateView.as_view(), name='item-list'),
+    path('items/<int:pk>/', views.ItemDetailView.as_view(), name='item-detail'),
+
+    # Category Items Endpoint - items within a specific category
+    path('categories/<str:identifier>/items/', views.CategoryItemsListView.as_view(), name='category-items-list'),
+    
+        # Audit log endpoint
+    path('inventory/audit-logs/', views.AuditLogView.as_view(), name='audit-log'),
 ]

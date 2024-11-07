@@ -1,9 +1,15 @@
 from django.urls import path
-from . import views
+from django_rest_passwordreset.views import (
+    ResetPasswordConfirm, 
+    ResetPasswordValidateToken,
+    # ResetPasswordRequestToken
+)
 from rest_framework_simplejwt.views import (
     TokenVerifyView,
     TokenRefreshView
 )
+
+from . import views
 
 urlpatterns = [
     # Authentication endpoints
@@ -11,7 +17,9 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('login/token-refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('login/token-verify/', TokenVerifyView.as_view(), name='token_verify'),
-    path('password-reset/', views.CustomPasswordResetRequestView.as_view(), name='password_reset'),
+    path('password-reset/rquest/', views.CustomPasswordResetRequestView.as_view(), name='password_reset'),
+    path('password-reset/confirm/', ResetPasswordConfirm.as_view(), name='password_reset_confirm'),
+    path('password-reset/validate/', ResetPasswordValidateToken.as_view(), name='password_reset_validate'),
     path('password-change/', views.PasswordChangeView.as_view(), name='password_change'),
 
     # User management endpoints

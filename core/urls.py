@@ -39,7 +39,6 @@ urlpatterns = [
     path('api/', include('assets.urls')),
     path('api/', include('inventory.urls')),
     path('api/', include('accounts.urls')),	
-    path('api/password_reset/', include('django_rest_passwordreset.urls', namespace='password_reset')),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 ]

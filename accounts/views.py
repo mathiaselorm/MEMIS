@@ -8,6 +8,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.views import TokenObtainPairView
 from django.core.exceptions import ValidationError
 
@@ -276,11 +277,11 @@ class PasswordChangeView(generics.UpdateAPIView):
 
         
 
-class UserDetailView(generics.RetrieveUpdateAPIView):
+class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Retrieve or update the details of a user.
-    Admins and Superusers can update Technician profiles, but they cannot update their passwords.
-    Technicians users cannot edit their own profile.
+    Retrieve, update, or delete the details of a user.
+    Admins and Superusers can manage Technician profiles, but they cannot update passwords.
+    Technicians cannot edit their own profiles.
     """
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -295,31 +296,49 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
     def update(self, request, *args, **kwargs):
         user = self.get_object()
 
-        # Prevent editing of certain fields
-        non_editable_fields = ['password', 'is_superuser', 'email', 'user_role']
-        for field in non_editable_fields:
-            if field in request.data:
-                request.data.pop(field)
+        # Filter out uneditable fields
+        uneditable_fields = ['password', 'is_superuser']
+        data = request.data.copy()
+        for field in uneditable_fields:
+            if field in data:
+                data.pop(field)
 
-        response = super().update(request, *args, **kwargs)
+        # Use serializer with partial update enabled
+        serializer = self.get_serializer(user, data=data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
 
-        if response.status_code == status.HTTP_200_OK:
-            # Log the user update
-            AuditLog.objects.create(
-                user=self.request.user,
-                action=AuditLog.ActionChoices.UPDATE,
-                target_user=user,
-                details=_('User details updated.')
-            )
-            logger.info(f"User {self.request.user.get_full_name()} updated details for user {user.get_full_name()}.")
+        # Log and audit the update
+        AuditLog.objects.create(
+            user=self.request.user,
+            action=AuditLog.ActionChoices.UPDATE,
+            target_user=user,
+            details=_('User details updated.')
+        )
+        logger.info(f"User {self.request.user.get_full_name()} updated details for user {user.get_full_name()}.")
 
-        return response
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def delete(self, request, *args, **kwargs):
+        user = self.get_object()
+
+        # Log and audit before deletion
+        logger.info(f"User {self.request.user.get_full_name()} deleted user {user.get_full_name()}.")
+        AuditLog.objects.create(
+            user=self.request.user,
+            action=AuditLog.ActionChoices.DELETE,
+            target_user=user,
+            details=_("User account deleted.")
+        )
+
+        # Perform deletion
+        user.delete()
+
+        return Response({"detail": _("User account deleted successfully.")}, status=status.HTTP_204_NO_CONTENT)
 
     @swagger_auto_schema(
         operation_summary="Retrieve User Details",
-        operation_description="""
-        Retrieve the details of a specific user. Only Admins and Superadmins can perform this operation.
-        """,
+        operation_description="Retrieve the details of a specific user. Only Admins and Superadmins can perform this operation.",
         responses={
             200: openapi.Response(
                 description="User details retrieved successfully.",
@@ -348,17 +367,12 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
         tags=["User Management"]
     )
     def get(self, request, *args, **kwargs):
-        """
-        Retrieve the details of a user.
-        """
+        """Retrieve the details of a user."""
         return self.retrieve(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_summary="Update User Details",
-        operation_description="""
-        Update the details of a specific user. Password and superuser status cannot be updated using this endpoint.
-        Only Admins and Superadmins can update user details.
-        """,
+        operation_description="Update the details of a specific user. Password and superuser status cannot be updated.",
         request_body=UserSerializer,
         responses={
             200: openapi.Response(
@@ -397,40 +411,18 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
         tags=["User Management"]
     )
     def put(self, request, *args, **kwargs):
-        """
-        Update the details of a user, excluding password.
-        """
+        """Update the details of a user, excluding password."""
         return self.update(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_summary="Partially Update User Details",
-        operation_description="""
-        Partially update the details of a specific user. Password and superuser status cannot be updated using this endpoint.
-        Only Admins and Superadmins can perform this action.
-        """,
-        request_body=UserSerializer,
+        operation_summary="Delete User",
+        operation_description="Delete a user. Only Admins and Superadmins can delete user accounts.",
         responses={
-            200: openapi.Response(
-                description="User details partially updated successfully.",
+            204: openapi.Response(
+                description="User deleted successfully.",
                 examples={
                     "application/json": {
-                        "id": 1,
-                        "email": "johndoe@example.com",
-                        "first_name": "John",
-                        "last_name": "Doe",
-                        "phone_number": "+1234567890",
-                        "user_role": "Admin",
-                        "date_joined": "2024-01-01T12:00:00Z",
-                        "last_login": "2024-01-10T10:00:00Z"
-                    }
-                }
-            ),
-            400: openapi.Response(
-                description="Bad Request - Validation Error",
-                examples={
-                    "application/json": {
-                        "first_name": ["This field is required."],
-                        "email": ["This email is already in use."]
+                        "detail": "User account deleted successfully."
                     }
                 }
             ),
@@ -445,16 +437,10 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
         },
         tags=["User Management"]
     )
-    def patch(self, request, *args, **kwargs):
-        """
-        Partially update the details of a user.
-        """
-        kwargs['partial'] = True
-        return self.update(request, *args, **kwargs)
-    
+    def delete(self, request, *args, **kwargs):
+        """Delete the user account."""
+        return self.delete(request, *args, **kwargs)
 
-
- 
 
 @swagger_auto_schema(
     method='post',
@@ -520,7 +506,6 @@ def logout_view(request):
         logger.error(f"Error during logout for user {user_full_name}: {e}")
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
     
-
 
 class UserListView(ListAPIView):
     """

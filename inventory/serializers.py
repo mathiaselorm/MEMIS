@@ -1,93 +1,86 @@
 from rest_framework import serializers
-from .models import Category, Supplier, Item
-from django.core.exceptions import ValidationError
-from simple_history.models import HistoricalRecords
+from .models import Category, Item
+from auditlog.models import LogEntry
+
+
 
 class ItemMinimalSerializer(serializers.ModelSerializer):
     """
     Minimal serializer for item representation in nested lists.
     """
     category_name = serializers.ReadOnlyField(source='category.name')
-    
+    stock_status = serializers.ReadOnlyField()
+
     class Meta:
         model = Item
-        fields = ['item_id', 'descriptive_name', 'category_name', 'current_stock', 'stock_status']
-
-
-
+        fields = ['id', 'descriptive_name', 'category_name', 'current_stock', 'stock_status']
 
 
 class CategorySerializer(serializers.ModelSerializer):
     """
-    Serializer for Category model with history and soft deletion support.
+    Serializer for Category model, including draft/published status and soft deletion support.
     """
-    history = serializers.SerializerMethodField()
+    is_draft = serializers.BooleanField(write_only=True, default=False)  # New field to control draft status
+    status = serializers.CharField(read_only=True)
 
     class Meta:
         model = Category
-        fields = ['id', 'slug', 'name', 'description', 'created_at', 'modified', 'is_deleted']
-        read_only_fields = ['is_deleted', 'history', 'created_at', 'updated_at']
+        fields = ['id', 'slug', 'name', 'description', 'created_at', 'modified', 'is_removed', 'status', 'is_draft']
+        read_only_fields = ['id', 'slug', 'created_at', 'modified', 'is_removed', 'status']
 
-  
-
-
-class SupplierSerializer(serializers.ModelSerializer):
-    """
-    Serializer for Supplier model with item listing, contact details, and history.
-    """
-    supplied_items = serializers.SerializerMethodField()
-    history = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Supplier
-        fields = ['id', 'name', 'contact_info', 'created_at', 'updated_at', 'history', 'is_deleted', 'supplied_items']
-        read_only_fields = ['is_deleted', 'history', 'created_at', 'updated_at']
-
-    def get_supplied_items(self, obj):
+    def validate_name(self, value):
         """
-        Return all items related to the supplier without pagination.
+        Validate that the category name is unique when the status is published.
         """
-        items = obj.items.all()  # Get all items related to the supplier
-        return ItemMinimalSerializer(items, many=True).data
+        if self.instance and self.instance.status == Category.STATUS.published:
+            if Category.objects.filter(name=value, status=Category.STATUS.published).exclude(id=self.instance.id).exists():
+                raise serializers.ValidationError("A published category with this name already exists.")
+        return value
 
-    def get_history(self, obj):
-        """
-        Include history in the serialization if requested by query parameters.
-        """
-        request = self.context.get('request', None)
-        if request and 'include_history' in request.query_params:
-            history = obj.history.all()
-            return HistoricalRecordSerializer(history, many=True).data
-        return None
+    def create(self, validated_data):
+        is_draft = validated_data.pop('is_draft', False)
+        category = Category.objects.create(**validated_data)
+
+        if is_draft:
+            category.status = Category.STATUS.draft
+        else:
+            category.publish()
+
+        return category
+
+    def update(self, instance, validated_data):
+        is_draft = validated_data.pop('is_draft', False)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if is_draft:
+            instance.status = Category.STATUS.draft
+        else:
+            instance.publish()
+
+        instance.save()
+        return instance
 
 
 class ItemSerializer(serializers.ModelSerializer):
     """
-    Serializer for Item model, including stock status, category and supplier names, and history.
+    Serializer for Item model, including stock status, category information, and soft deletion support.
     """
+    category = serializers.PrimaryKeyRelatedField(queryset=Category.published.all())  # Only allow published categories
     category_name = serializers.ReadOnlyField(source='category.name')
-    supplier_name = serializers.SerializerMethodField()
-    stock_status = serializers.SerializerMethodField()  # Allow custom logic for stock status
-    history = serializers.SerializerMethodField()
+    stock_status = serializers.SerializerMethodField()
+    is_draft = serializers.BooleanField(write_only=True, default=False)  # New field to control draft status
+    status = serializers.CharField(read_only=True)
 
     class Meta:
         model = Item
-        fields = ['item_id', 'category', 'category_name', 'descriptive_name', 'batch_number',
-                  'current_stock', 'reorder_threshold', 'location', 'supplier', 'supplier_name',
-                  'is_deleted', 'deleted_at', 'created_at', 'updated_at', 'stock_status', 'history']
-        read_only_fields = ['is_deleted', 'history', 'created_at', 'updated_at', 'stock_status', 'category_name', 'supplier_name']
-
-    def get_supplier_name(self, obj):
-        """
-        Returns the supplier's name, or 'Unknown' if no supplier is linked.
-        """
-        if obj.supplier:
-            return obj.supplier.name
-        return "Unknown"
+        fields = ['id', 'slug', 'category', 'category_name', 'descriptive_name', 'manufacturer', 'model_number',
+                  'serial_number', 'current_stock', 'location', 'is_removed', 'created_at', 'modified', 'stock_status', 'status', 'is_draft']
+        read_only_fields = ['slug', 'is_removed', 'created_at', 'modified', 'stock_status', 'category_name', 'status']
 
     def get_stock_status(self, obj):
         """
-        Returns the stock status by reading the model property.
+        Returns the stock status based on current stock and soft deletion state.
         """
         return obj.stock_status
 
@@ -99,20 +92,61 @@ class ItemSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Current stock cannot be negative.")
         return value
 
-    def validate(self, data):
+    def validate_serial_number(self, value):
         """
-        Additional validation to ensure reorder_threshold does not exceed current_stock.
+        Validate that the serial number is unique when the status is published.
         """
-        if data['reorder_threshold'] > data.get('current_stock', 0):
-            raise ValidationError("Reorder threshold cannot exceed current stock.")
-        return data
+        if self.instance and self.instance.status == Item.STATUS.published:
+            if Item.objects.filter(serial_number=value, status=Item.STATUS.published).exclude(id=self.instance.id).exists():
+                raise serializers.ValidationError("A published item with this serial number already exists.")
+        return value
 
-    def get_history(self, obj):
-        """
-        Optionally include history in the serialization if requested by query parameters.
-        """
-        request = self.context.get('request', None)
-        if request and 'include_history' in request.query_params:
-            history = obj.history.all()
-            return HistoricalRecordSerializer(history, many=True).data
-        return None
+    def create(self, validated_data):
+        is_draft = validated_data.pop('is_draft', False)
+        item = Item.objects.create(**validated_data)
+
+        if is_draft:
+            item.status = Item.STATUS.draft
+        else:
+            item.publish()
+
+        return item
+
+    def update(self, instance, validated_data):
+        is_draft = validated_data.pop('is_draft', False)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if is_draft:
+            instance.status = Item.STATUS.draft
+        else:
+            instance.publish()
+
+        instance.save()
+        return instance
+
+
+
+class LogEntrySerializer(serializers.ModelSerializer):
+    actor = serializers.SerializerMethodField()
+    changes = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LogEntry
+        fields = ['action', 'timestamp', 'object_repr', 'changes', 'actor']
+
+    def get_changes(self, obj):
+        changes = obj.changes_dict or {}
+        change_messages = []
+
+        for field, values in changes.items():
+            if isinstance(values, list) and len(values) == 2:
+                old_value, new_value = values
+                change_messages.append(f"{field} changed from '{old_value}' to '{new_value}'")
+
+        return "; ".join(change_messages) if change_messages else "No changes recorded."
+
+    def get_actor(self, obj):
+        if obj.actor:
+            return obj.actor.get_full_name()
+        return "Unknown User"
