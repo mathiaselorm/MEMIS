@@ -8,7 +8,7 @@ from rest_framework.exceptions import ValidationError
 
 from .models import Asset, Department
 from auditlog.models import LogEntry
-from .serializers import DepartmentSerializer, AssetSerializer, LogEntrySerializer
+from .serializers import DepartmentSerializer, AssetSerializer, AssetsLogEntrySerializer
 from .utils import get_object_by_id_or_slug
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -761,7 +761,7 @@ class AuditLogView(APIView):
         operation_summary="Retrieve all Django-Auditlog entries",
         operation_description="Returns a list of all audit log entries recorded by Django-Auditlog, ordered by most recent.",
         responses={
-            200: LogEntrySerializer(many=True),
+            200: AssetsLogEntrySerializer(many=True),
             403: "Forbidden - User is not authorized to access this endpoint."
         },
         manual_parameters=[
@@ -793,7 +793,7 @@ class AuditLogView(APIView):
         elif asset_name:
             queryset = queryset.filter(object_repr__icontains=asset_name)
 
-        serializer = LogEntrySerializer(queryset, many=True)
+        serializer = AssetsLogEntrySerializer(queryset, many=True)
         return Response(serializer.data)
 
 

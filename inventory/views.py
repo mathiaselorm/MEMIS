@@ -1,4 +1,3 @@
-from rest_framework.views import APIView
 from rest_framework import generics, filters, status
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.response import Response
@@ -7,11 +6,10 @@ from rest_framework.permissions import IsAuthenticated
 from auditlog.models import LogEntry
 from .models import Category, Item
 from django.shortcuts import get_object_or_404
-from .serializers import CategorySerializer, ItemSerializer, LogEntrySerializer
+from .serializers import CategorySerializer, ItemSerializer, InventoryLogEntrySerializer
 from .utils import get_object_by_id_or_slug
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
-
 
 # --------- CATEGORY VIEWS --------- #
 class CategoryListCreateView(generics.ListCreateAPIView):
@@ -65,7 +63,7 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_object(self):
         identifier = self.kwargs.get("identifier")
         category = get_object_by_id_or_slug(Category, identifier, id_field="id", slug_field="slug")
-        if category.is_deleted:
+        if category.is_removed:
             raise NotFound("This category has been deleted.")
         return category
 
@@ -103,7 +101,7 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     def delete(self, request, *args, **kwargs):
         category = self.get_object()
-        category.delete()  # Soft delete
+        category.delete()  # Soft-delete
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -122,7 +120,7 @@ class ItemListCreateView(generics.ListCreateAPIView):
     ordering = ['descriptive_name']
 
     def get_queryset(self):
-        queryset = Item.objects.filter(is_deleted=False)
+        queryset = Item.objects.filter(is_removed=False)
         stock_status = self.request.query_params.get('stock_status')
         if stock_status:
             queryset = queryset.filter(stock_status=stock_status)
@@ -156,11 +154,7 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     serializer_class = ItemSerializer
     permission_classes = [IsAuthenticated]
-
-    def get_object(self):
-        item_id = self.kwargs.get("pk")
-        item = get_object_or_404(Item, pk=id, is_deleted=False)
-        return item
+    queryset = Item.objects.filter(is_removed=False)  # Defined queryset
 
     @swagger_auto_schema(
         operation_description="Retrieve a specific item by its ID.",
@@ -190,9 +184,8 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     def delete(self, request, *args, **kwargs):
         item = self.get_object()
-        item.delete()  # This triggers the soft-delete mechanism
+        item.delete()  # Soft-delete
         return Response(status=status.HTTP_204_NO_CONTENT)
-    
 
 
 # --------- CATEGORY ITEM LIST VIEW --------- #
@@ -204,14 +197,14 @@ class CategoryItemsListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['descriptive_name', 'serial_number']
-    filterset_fields = ['location', 'category']
+    filterset_fields = ['location', 'status']
     ordering_fields = ['current_stock', 'descriptive_name', 'created']
     ordering = ['created']
 
     def get_queryset(self):
         identifier = self.kwargs.get('identifier')
         category = get_object_by_id_or_slug(Category, identifier, id_field='id', slug_field='slug')
-        return Item.objects.filter(category=category, is_deleted=False)
+        return Item.objects.filter(category=category, is_removed=False)
 
     @swagger_auto_schema(
         operation_description="List all items within a specific category by slug or ID.",
@@ -224,18 +217,23 @@ class CategoryItemsListView(generics.ListAPIView):
         return super().get(request, *args, **kwargs)
 
 
-
-class AuditLogView(APIView):
+class AuditLogView(generics.ListAPIView):
     """
     API endpoint that returns a list of all audit logs for Items and Categories from Django-Auditlog.
     """
+    serializer_class = InventoryLogEntrySerializer
     permission_classes = [IsAuthenticated]
+    queryset = LogEntry.objects.all()
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['object_repr', 'changes']
+    ordering_fields = ['timestamp']
+    ordering = ['-timestamp']
 
     @swagger_auto_schema(
         operation_summary="Retrieve all audit log entries for Items and Categories",
         operation_description="Returns a list of audit log entries recorded by Django-Auditlog for Item and Category models, ordered by most recent.",
         responses={
-            200: LogEntrySerializer(many=True),
+            200: openapi.Response(description="A list of audit log entries.", schema=InventoryLogEntrySerializer(many=True)),
             403: "Forbidden - User is not authorized to access this endpoint."
         },
         manual_parameters=[
@@ -267,5 +265,5 @@ class AuditLogView(APIView):
         elif item_name:
             queryset = queryset.filter(object_repr__icontains=item_name, content_type__model='item')
 
-        serializer = LogEntrySerializer(queryset, many=True)
+        serializer = InventoryLogEntrySerializer(queryset, many=True)
         return Response(serializer.data)

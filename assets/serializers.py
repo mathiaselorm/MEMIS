@@ -124,7 +124,7 @@ class AssetMinimalSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'device_type', 'embossment_id', 'department_name']
 
 
-class LogEntrySerializer(serializers.ModelSerializer):
+class AssetsLogEntrySerializer(serializers.ModelSerializer):
     actor = serializers.SerializerMethodField()
     changes = serializers.SerializerMethodField()
 

@@ -46,6 +46,8 @@ class Category(ConditionalValidationMixin, StatusModel, SoftDeletableModel, Time
 
     def __str__(self):
         return self.name
+    
+    
 
 class Item(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStampedModel):
     """
@@ -101,15 +103,6 @@ class Item(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStam
         else:
             return "In Stock"
 
-    class Meta:
-        verbose_name_plural = "items"
-        constraints = [
-            UniqueConstraint(
-                fields=['serial_number'],
-                condition=Q(status='published'),
-                name='unique_serial_number_when_published'
-            )
-        ]
 
 
 # Register models with auditlog

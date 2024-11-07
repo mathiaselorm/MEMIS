@@ -25,8 +25,8 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'slug', 'name', 'description', 'created_at', 'modified', 'is_removed', 'status', 'is_draft']
-        read_only_fields = ['id', 'slug', 'created_at', 'modified', 'is_removed', 'status']
+        fields = ['id', 'slug', 'name', 'description', 'created', 'modified', 'is_removed', 'status', 'is_draft']
+        read_only_fields = ['id', 'slug', 'created', 'modified', 'is_removed', 'status']
 
     def validate_name(self, value):
         """
@@ -62,6 +62,7 @@ class CategorySerializer(serializers.ModelSerializer):
         return instance
 
 
+
 class ItemSerializer(serializers.ModelSerializer):
     """
     Serializer for Item model, including stock status, category information, and soft deletion support.
@@ -74,9 +75,9 @@ class ItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Item
-        fields = ['id', 'slug', 'category', 'category_name', 'descriptive_name', 'manufacturer', 'model_number',
-                  'serial_number', 'current_stock', 'location', 'is_removed', 'created_at', 'modified', 'stock_status', 'status', 'is_draft']
-        read_only_fields = ['slug', 'is_removed', 'created_at', 'modified', 'stock_status', 'category_name', 'status']
+        fields = ['id', 'category', 'category_name', 'descriptive_name', 'manufacturer', 'model_number',
+                  'serial_number', 'current_stock', 'location', 'is_removed', 'created', 'modified', 'stock_status', 'status', 'is_draft']
+        read_only_fields = ['is_removed', 'created', 'modified', 'stock_status', 'category_name', 'status']
 
     def get_stock_status(self, obj):
         """
@@ -127,7 +128,9 @@ class ItemSerializer(serializers.ModelSerializer):
 
 
 
-class LogEntrySerializer(serializers.ModelSerializer):
+
+
+class InventoryLogEntrySerializer(serializers.ModelSerializer):
     actor = serializers.SerializerMethodField()
     changes = serializers.SerializerMethodField()
 
