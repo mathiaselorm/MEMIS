@@ -1,139 +1,107 @@
 from django.db import models
 from django.contrib.auth import get_user_model
-from django.core.validators import MinValueValidator, ValidationError
-from simple_history.models import HistoricalRecords
-from django.utils import timezone
-from django.utils.text import slugify
+from django.core.validators import MinValueValidator
+from model_utils.models import StatusModel, SoftDeletableModel, TimeStampedModel
+from model_utils import Choices
+from model_utils.managers import QueryManager
+from autoslug import AutoSlugField
+from auditlog.registry import auditlog
+from django.db.models import Q, UniqueConstraint
 
 User = get_user_model()
 
-class TimeStampedModel(models.Model):
-    """
-    Abstract base model that provides self-updating 'created_at' and 'updated_at' fields.
-    """
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+class ConditionalValidationMixin:
+    def save(self, *args, **kwargs):
+        if self.status != self.STATUS.draft:
+            self.full_clean()
+        super().save(*args, **kwargs)
 
-    class Meta:
-        abstract = True
-
-class SoftDeletionQuerySet(models.QuerySet):
-    """
-    QuerySet to handle bulk soft deletion and restoration.
-    """
-    def delete(self):
-        """ Soft delete the queryset. """
-        return super().update(is_deleted=True, deleted_at=timezone.now())
-    
-    def restore(self):
-        """ Restore soft-deleted objects in the queryset. """
-        return super().update(is_deleted=False, deleted_at=None)
-
-class SoftDeletionManager(models.Manager):
-    """
-    Manager to filter out soft-deleted objects by default.
-    """
-    def get_queryset(self):
-        return SoftDeletionQuerySet(self.model, using=self._db).filter(is_deleted=False)
-
-class SoftDeletionModel(TimeStampedModel):
-    """
-    Abstract base model that adds soft deletion functionality with 'is_deleted' and 'deleted_at' fields.
-    """
-    is_deleted = models.BooleanField(default=False, db_index=True)
-    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
-
-    objects = SoftDeletionManager()
-    all_objects = models.Manager()  # Manager to include soft-deleted objects
-
-    def delete(self):
-        """ Soft delete the object. """
-        self.is_deleted = True
-        self.deleted_at = timezone.now()
-        self.save()
-
-    def restore(self):
-        """ Restore the object from soft deletion. """
-        self.is_deleted = False
-        self.deleted_at = None
-        self.save()
-
-    class Meta:
-        abstract = True
-
-class Category(SoftDeletionModel):
+class Category(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStampedModel):
     """
     Represents a category for items. Includes a name and an optional description.
     """
     name = models.CharField(max_length=255, unique=True)
-    slug = models.SlugField(unique=True, blank=True, db_index=True)
+    slug = AutoSlugField(populate_from='name', unique=True, max_length=255)
     description = models.TextField(blank=True, null=True)
-    history = HistoricalRecords()
+    STATUS = Choices('draft', 'published')
 
-    def save(self, *args, **kwargs):
-        # Always update slug when name changes
-        self.slug = slugify(self.name)
-        super(Category, self).save(*args, **kwargs)
+    class Meta:
+        constraints = [
+            UniqueConstraint(
+                fields=['name'],
+                condition=Q(status='published'),
+                name='unique_category_name_when_published'
+            )
+        ]
+
+    # Custom managers
+    objects = models.Manager()
+    published = QueryManager(status=STATUS.published)
+    draft = QueryManager(status=STATUS.draft)
+
+    def publish(self):
+        if self.status != self.STATUS.published:
+            self.status = self.STATUS.published
+            self.save()
 
     def __str__(self):
         return self.name
 
-
-class Supplier(SoftDeletionModel):
+class Item(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStampedModel):
     """
-    Represents a supplier with a name and contact information.
+    Represents an item with inventory details, linked to a category.
     """
-    name = models.CharField(max_length=255)
-    contact_info = models.CharField(max_length=255, blank=True, null=True)
-    history = HistoricalRecords()
-
-    def __str__(self):
-        return self.name
-
-
-class Item(SoftDeletionModel):
-    """
-    Represents an item with inventory details, linked to a category and a supplier.
-    """
-    item_id = models.AutoField(primary_key=True)
-    category = models.ForeignKey(Category, related_name='items', on_delete=models.CASCADE, null=True, db_index=True)
-    supplier = models.ForeignKey(Supplier, related_name='items', on_delete=models.SET_NULL, null=True, blank=True)
+    category = models.ForeignKey(
+        Category,
+        related_name='items',
+        on_delete=models.CASCADE,
+        null=True,
+        db_index=True
+    )
     descriptive_name = models.CharField(max_length=255, db_index=True)
-    batch_number = models.CharField(max_length=100, blank=True, null=True)
+    manufacturer = models.CharField(max_length=100, blank=True, null=True)
+    model_number = models.CharField(max_length=100, blank=True, null=True)
+    serial_number = models.CharField(max_length=100, unique=True)
     current_stock = models.IntegerField(validators=[MinValueValidator(0)])
-    reorder_threshold = models.IntegerField(validators=[MinValueValidator(0)])
     location = models.CharField(max_length=255)
-    history = HistoricalRecords()
+    STATUS = Choices('draft', 'published')
 
-    def clean(self):
-        """
-        Ensures the reorder threshold does not exceed the current stock on update.
-        """
-        if self.pk and self.reorder_threshold > self.current_stock:
-            raise ValidationError({'reorder_threshold': 'Reorder threshold cannot exceed current stock.'})
-        
-    def save(self, *args, **kwargs):
-        """ Ensure the item is fully validated before saving. """
-        self.full_clean()  # Call the full_clean method before saving to run clean method
-        super().save(*args, **kwargs)
-    
+    # Custom managers
+    objects = models.Manager()
+    published = QueryManager(status=STATUS.published)
+    draft = QueryManager(status=STATUS.draft)
+
+    def publish(self):
+        if self.status != self.STATUS.published:
+            self.status = self.STATUS.published
+            self.save()
+
     def __str__(self):
-        return f"{self.descriptive_name} - Stock: {self.current_stock} - Batch: {self.batch_number or 'N/A'}"
+        return f"{self.descriptive_name}"
 
     @property
     def stock_status(self):
-        """ 
-        Returns the stock status based on current stock and archived state. 
-        Includes more granular stock levels like 'Low Stock'.
         """
-        if self.is_deleted:
+        Returns the stock status based on current stock and deleted state.
+        """
+        if self.is_removed:
             return "Archived"
         elif self.current_stock == 0:
             return "Out of Stock"
-        elif self.current_stock <= self.reorder_threshold:
-            return "Low Stock"
         else:
             return "In Stock"
 
     class Meta:
         verbose_name_plural = "items"
+        constraints = [
+            UniqueConstraint(
+                fields=['serial_number'],
+                condition=Q(status='published'),
+                name='unique_serial_number_when_published'
+            )
+        ]
+
+
+# Register models with auditlog
+auditlog.register(Item)
+auditlog.register(Category)

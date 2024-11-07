@@ -14,21 +14,7 @@ class ItemMinimalSerializer(serializers.ModelSerializer):
         fields = ['item_id', 'descriptive_name', 'category_name', 'current_stock', 'stock_status']
 
 
-class HistoricalRecordSerializer(serializers.Serializer):
-    """
-    Serializer for handling historical records.
-    """
-    history_id = serializers.IntegerField()
-    history_date = serializers.DateTimeField()
-    history_user = serializers.CharField(source='history_user.username', default=None, allow_null=True)
-    history_type = serializers.CharField()
-    changed_fields = serializers.SerializerMethodField()
 
-    def get_changed_fields(self, obj):
-        """
-        Return the fields that changed in this historical record.
-        """
-        return list(obj.diff_against(obj.prev_record).changed_fields) if obj.prev_record else []
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -39,18 +25,10 @@ class CategorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Category
-        fields = ['id', 'slug', 'name', 'description', 'created_at', 'updated_at', 'history', 'is_deleted']
+        fields = ['id', 'slug', 'name', 'description', 'created_at', 'modified', 'is_deleted']
         read_only_fields = ['is_deleted', 'history', 'created_at', 'updated_at']
 
-    def get_history(self, obj):
-        """
-        Include history in the serialization if requested by query parameters.
-        """
-        request = self.context.get('request', None)
-        if request and 'include_history' in request.query_params:
-            history = obj.history.all()
-            return HistoricalRecordSerializer(history, many=True).data
-        return None
+  
 
 
 class SupplierSerializer(serializers.ModelSerializer):

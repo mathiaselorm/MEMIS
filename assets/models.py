@@ -9,6 +9,7 @@ from auditlog.registry import auditlog
 from cloudinary.models import CloudinaryField
 from django.db.models import Q, UniqueConstraint
 
+
 User = get_user_model()
 
 class ConditionalValidationMixin:

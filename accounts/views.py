@@ -465,9 +465,9 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
-            'refresh_token': openapi.Schema(type=openapi.TYPE_STRING, description="Refresh token"),
+            'refresh': openapi.Schema(type=openapi.TYPE_STRING, description="Refresh token"),
         },
-        required=['refresh_token']
+        required=['refresh']
     ),
     responses={
         200: openapi.Response(
