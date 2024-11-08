@@ -46,8 +46,9 @@ ALLOWED_HOSTS = ['*']
 EMAIL_BACKEND = 'accounts.utils.BrevoAPIBackend'
 
 
-# FRONTEND_URL = 'memis.vercel.app' 
-FRONTEND_URL = 'http://localhost:5173' 
+FRONTEND_URL = 'memis.vercel.app' 
+
+# FRONTEND_URL = 'http://localhost:5173' 
 
 
 
