@@ -19,10 +19,11 @@ User = get_user_model()
 
 class UserSerializer(serializers.ModelSerializer):
     """
-    Serializer for the user model.
-    Provides additional validation and excludes superusers from updates.
+    Serializer for the User model.
+    Allows updating user_role using human-readable strings.
+    Excludes password and is_superuser from being updated.
     """
-    user_role = serializers.SerializerMethodField()
+    user_role = serializers.CharField(label=_("User Role"))
 
     class Meta:
         model = User
@@ -30,7 +31,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'phone_number',
             'user_role', 'date_joined', 'last_login'
         )
-        read_only_fields = ('date_joined', 'last_login')
+        read_only_fields = ('id', 'date_joined', 'last_login')
         extra_kwargs = {
             'first_name': {'label': _("First Name")},
             'last_name': {'label': _("Last Name")},
@@ -38,36 +39,57 @@ class UserSerializer(serializers.ModelSerializer):
             'email': {'label': _("Email Address")}
         }
 
-    def get_user_role(self, obj):
-        """Return the display name of the user's role."""
-        return obj.get_user_role_display()
+    def to_representation(self, instance):
+        """
+        Override to_representation to display user_role as its display string.
+        """
+        representation = super().to_representation(instance)
+        representation['user_role'] = instance.get_user_role_display()
+        return representation
 
     def validate_email(self, value):
         """
         Ensure the email is unique among non-superuser users.
         """
-        if User.objects.filter(email=value).exclude(id=self.instance.id).exclude(is_superuser=True).exists():
-            raise ValidationError(_("This email is already in use by another account."))
+        if self.instance:
+            if User.objects.filter(email=value).exclude(id=self.instance.id).exclude(is_superuser=True).exists():
+                raise ValidationError(_("This email is already in use by another account."))
+        else:
+            if User.objects.filter(email=value).exclude(is_superuser=True).exists():
+                raise ValidationError(_("This email is already in use by another account."))
         return value
+
+    def validate_user_role(self, value):
+        """
+        Validate and map the human-readable role to internal value.
+        Only Admins and SuperAdmins can assign roles.
+        """
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            raise ValidationError(_("Authentication credentials were not provided."))
+
+        # Ensure the requesting user has permission to assign roles
+        if request.user.user_role not in [User.UserRole.ADMIN, User.UserRole.SUPERADMIN]:
+            raise ValidationError(_("You do not have permission to assign user roles."))
+
+        # Map display string to internal value
+        for role in User.UserRole:
+            if value.strip().lower() == role.label.lower():
+                return role.value
+        raise ValidationError(_("Invalid role: %(value)s") % {'value': value})
 
     def update(self, instance, validated_data):
         """
         Update and return an existing `User` instance, given the validated data.
         Excludes changes to superuser status and sensitive fields.
         """
+        # Define uneditable fields
         uneditable_fields = {'password', 'is_superuser'}
         validated_data = {k: v for k, v in validated_data.items() if k not in uneditable_fields}
 
-        # Map display string to internal role value if `user_role` is updated
+        # Update user_role if provided
         if 'user_role' in validated_data:
-            new_role_display = validated_data.pop('user_role')
-            new_role_value = next(
-                (role.value for role in User.UseRole if role.label == new_role_display), 
-                None
-            )
-            if new_role_value is None:
-                raise ValidationError({"user_role": _("Invalid role provided.")})
-            instance.user_role = new_role_value
+            instance.user_role = validated_data.pop('user_role')
 
         # Update other fields
         for attr, value in validated_data.items():

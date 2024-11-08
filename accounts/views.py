@@ -288,15 +288,22 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
 
     def get_object(self):
+        """
+        Retrieve the user object.
+        Prevent Technicians from editing their own profiles.
+        """
         obj = super().get_object()
         if self.request.user.user_role == User.UserRole.TECHNICIAN and self.request.user == obj:
             raise PermissionDenied(_("You cannot update your own profile. Contact an Admin for changes."))
         return obj
 
     def update(self, request, *args, **kwargs):
+        """
+        Update user details excluding uneditable fields.
+        """
         user = self.get_object()
 
-        # Filter out uneditable fields
+        # Filter out uneditable fields if they somehow bypassed serializer exclusion
         uneditable_fields = ['password', 'is_superuser']
         data = request.data.copy()
         for field in uneditable_fields:
@@ -319,22 +326,23 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def delete(self, request, *args, **kwargs):
+    def destroy(self, request, *args, **kwargs):
+        """
+        Delete the user account.
+        """
         user = self.get_object()
 
         # Log and audit before deletion
-        logger.info(f"User {self.request.user.get_full_name()} deleted user {user.get_full_name()}.")
         AuditLog.objects.create(
-            user=self.request.user,
+            user=request.user,
             action=AuditLog.ActionChoices.DELETE,
             target_user=user,
             details=_("User account deleted.")
         )
+        logger.info(f"User {request.user.get_full_name()} deleted user {user.get_full_name()}.")
 
-        # Perform deletion
-        user.delete()
-
-        return Response({"detail": _("User account deleted successfully.")}, status=status.HTTP_204_NO_CONTENT)
+        # Perform deletion by calling the superclass method
+        return super().destroy(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_summary="Retrieve User Details",
@@ -360,6 +368,14 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                 examples={
                     "application/json": {
                         "detail": "You do not have permission to perform this action."
+                    }
+                }
+            ),
+            404: openapi.Response(
+                description="User Not Found",
+                examples={
+                    "application/json": {
+                        "detail": "Not found."
                     }
                 }
             ),
@@ -403,7 +419,15 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                 description="Permission Denied",
                 examples={
                     "application/json": {
-                        "detail": "You do not have permission to perform this action."
+                        "detail": "You cannot update your own profile. Contact an Admin for changes."
+                    }
+                }
+            ),
+            404: openapi.Response(
+                description="User Not Found",
+                examples={
+                    "application/json": {
+                        "detail": "Not found."
                     }
                 }
             ),
@@ -434,13 +458,23 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
                     }
                 }
             ),
+            404: openapi.Response(
+                description="User Not Found",
+                examples={
+                    "application/json": {
+                        "detail": "Not found."
+                    }
+                }
+            ),
         },
         tags=["User Management"]
     )
-    def delete(self, request, *args, **kwargs):
+    def delete_user(self, request, *args, **kwargs):
         """Delete the user account."""
-        return self.delete(request, *args, **kwargs)
-
+        return self.destroy(request, *args, **kwargs)
+    
+    
+    
 
 @swagger_auto_schema(
     method='post',
