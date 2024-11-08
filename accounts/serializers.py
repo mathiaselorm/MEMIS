@@ -1,6 +1,7 @@
 import logging
 from django.contrib.auth import get_user_model, password_validation
 from django.utils.translation import gettext_lazy as _
+from django.utils.crypto import get_random_string
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -153,9 +154,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user_role_value = validated_data.pop('user_role')
         validated_data['user_role'] = user_role_value
 
-        # Create the user without a password
+        # Generate a random default password
+        default_password = get_random_string(length=8)
+
+        # Create the user with the generated password
         user = User.objects.create_user(**validated_data)
-        user.set_unusable_password()
+        user.set_password(default_password)
         user.save()
         logger.info(f"User created successfully: {user.email}")
 
@@ -166,7 +170,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             ip_address=self.context['request'].META.get('REMOTE_ADDR', ''),
         )
 
-        # Send the reset password token created signal with additional context
+        # Send the password reset token via signal
         reset_password_token_created.send(
             sender=self.__class__,
             instance=self,
@@ -174,7 +178,37 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             created_via='registration'
         )
 
+        # # Optionally, log the default password (not recommended for production)
+        # logger.debug(f"Default password for {user.email}: {default_password}")
+
         return user
+    
+    # def create(self, validated_data):
+    #     user_role_value = validated_data.pop('user_role')
+    #     validated_data['user_role'] = user_role_value
+
+    #     # Create the user without a password
+    #     user = User.objects.create_user(**validated_data)
+    #     user.set_unusable_password()
+    #     user.save()
+    #     logger.info(f"User created successfully: {user.email}")
+
+    #     # Trigger the password reset process
+    #     token = ResetPasswordToken.objects.create(
+    #         user=user,
+    #         user_agent=self.context['request'].META.get('HTTP_USER_AGENT', ''),
+    #         ip_address=self.context['request'].META.get('REMOTE_ADDR', ''),
+    #     )
+
+    #     # Send the reset password token created signal with additional context
+    #     reset_password_token_created.send(
+    #         sender=self.__class__,
+    #         instance=self,
+    #         reset_password_token=token,
+    #         created_via='registration'
+    #     )
+
+    #     return user
 
 
 
