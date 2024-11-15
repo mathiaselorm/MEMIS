@@ -161,24 +161,3 @@ class AssetsLogEntrySerializer(serializers.ModelSerializer):
             return obj.actor.get_full_name()
         return "Unknown User"
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# class AssetMinimalSerializer(serializers.ModelSerializer):
-#     department_name = serializers.ReadOnlyField(source='department.name')
-
-#     class Meta:
-#         model = Asset
-#         fields = ['id', 'name', 'device_type', 'embossment_id', 'department_name']
