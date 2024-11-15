@@ -1,14 +1,12 @@
-from django.http import Http404
-from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
-from rest_framework.exceptions import ValidationError
+from rest_framework.decorators import api_view, permission_classes
 
 from .models import Asset, Department
 from auditlog.models import LogEntry
-from .serializers import DepartmentSerializer, AssetSerializer, AssetsLogEntrySerializer
+from .serializers import DepartmentWriteSerializer, DepartmentReadSerializer, AssetReadSerializer, AssetWriteSerializer, AssetsLogEntrySerializer
 from .utils import get_object_by_id_or_slug
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
@@ -20,89 +18,50 @@ class DepartmentList(generics.ListCreateAPIView):
     """
     List all departments or create a new department.
     """
-    serializer_class = DepartmentSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Department.objects.all()
+    
+    def get_queryset(self):
+        queryset = Department.objects.all()
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        else:
+            queryset = queryset.filter(status='published')  # Default to published
+        return queryset
 
     def get_permissions(self):
         if self.request.method == "POST":
             self.permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
         return super().get_permissions()
 
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return DepartmentWriteSerializer
+        return DepartmentReadSerializer
+    
     @swagger_auto_schema(
-        operation_description="Retrieve a list of all departments. Only authenticated users can view the list.",
-        responses={
-            200: openapi.Response(
-                description="List of all departments.",
-                schema=DepartmentSerializer(many=True),
-                examples={
-                    "application/json": [
-                        {
-                            "id": 1,
-                            "name": "Finance Department",
-                            "slug": "finance-department",
-                            "head": 3,
-                            "head_name": "John Doe",
-                            "contact_phone": "+123456789",
-                            "contact_email": "finance@example.com",
-                            "total_assets": 10,
-                            "active_assets": 5,
-                            "archive_assets": 2,
-                            "assets_under_maintenance": 1,
-                            "total_commissioned_assets": 8,
-                            "total_decommissioned_assets": 1,
-                            "is_draft": False,
-                            "status": "published"
-                        }
-                    ]
-                }
+        operation_description="Retrieve a list of departments. Optionally filter by status.",
+        manual_parameters=[
+            openapi.Parameter(
+                'status', openapi.IN_QUERY,
+                description="Filter departments by status ('draft' or 'published')",
+                type=openapi.TYPE_STRING,
+                required=False,
+                enum=['draft', 'published']
             ),
-            401: openapi.Response(
-                description="Unauthorized access.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "detail": openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description="Error message"
-                        )
-                    }
-                ),
-                examples={
-                    "application/json": {"detail": "Authentication credentials were not provided."}
-                }
-            )
-        }
+        ],
+        responses={200: DepartmentReadSerializer(many=True)},
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Create a new department. Only staff users have permission to create.",
-        request_body=DepartmentSerializer,
+        request_body=DepartmentWriteSerializer,
         responses={
             201: openapi.Response(
                 description="Department successfully created.",
-                schema=DepartmentSerializer,
-                examples={
-                    "application/json": {
-                        "id": 2,
-                        "name": "HR Department",
-                        "slug": "hr-department",
-                        "head": 4,
-                        "head_name": "Jane Smith",
-                        "contact_phone": "+987654321",
-                        "contact_email": "hr@example.com",
-                        "total_assets": 5,
-                        "active_assets": 3,
-                        "archive_assets": 1,
-                        "assets_under_maintenance": 0,
-                        "total_commissioned_assets": 4,
-                        "total_decommissioned_assets": 0,
-                        "is_draft": False,
-                        "status": "published"
-                    }
-                }
+                schema=DepartmentWriteSerializer,
             ),
             400: openapi.Response(
                 description="Bad request - Invalid data submitted.",
@@ -159,7 +118,6 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update, or delete a department using either an ID or a slug.
     """
-    serializer_class = DepartmentSerializer
     permission_classes = [IsAuthenticated, DjangoModelPermissions]
     queryset = Department.objects.all()
 
@@ -170,31 +128,18 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         identifier = self.kwargs['identifier']
         return get_object_by_id_or_slug(Department, identifier, id_field='id', slug_field='slug')
 
+    def get_serializer_class(self):
+        if self.request.method in ['GET']:
+            return DepartmentReadSerializer
+        else:
+            return DepartmentWriteSerializer
+
     @swagger_auto_schema(
         operation_description="Retrieve a department by its ID or slug.",
         responses={
             200: openapi.Response(
                 description="Department details retrieved successfully.",
-                schema=DepartmentSerializer,
-                examples={
-                    "application/json": {
-                        "id": 1,
-                        "name": "Finance Department",
-                        "slug": "finance-department",
-                        "head": 3,
-                        "head_name": "John Doe",
-                        "contact_phone": "+123456789",
-                        "contact_email": "finance@example.com",
-                        "total_assets": 10,
-                        "active_assets": 5,
-                        "archive_assets": 2,
-                        "assets_under_maintenance": 1,
-                        "total_commissioned_assets": 8,
-                        "total_decommissioned_assets": 1,
-                        "is_draft": False,
-                        "status": "published"
-                    }
-                }
+                schema=DepartmentReadSerializer,
             ),
             404: openapi.Response(
                 description="Department not found.",
@@ -221,34 +166,18 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def get(self, request, *args, **kwargs):
+        """
+        Retrieve a department by its ID or slug.
+        """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Update a department by its ID or slug. Supports partial updates.",
-        request_body=DepartmentSerializer(partial=True),
+        request_body=DepartmentWriteSerializer,
         responses={
             200: openapi.Response(
                 description="Department successfully updated.",
-                schema=DepartmentSerializer,
-                examples={
-                    "application/json": {
-                        "id": 1,
-                        "name": "Finance Department",
-                        "slug": "finance-department",
-                        "head": 3,
-                        "head_name": "John Doe",
-                        "contact_phone": "+123456789",
-                        "contact_email": "finance@example.com",
-                        "total_assets": 10,
-                        "active_assets": 5,
-                        "archive_assets": 2,
-                        "assets_under_maintenance": 1,
-                        "total_commissioned_assets": 8,
-                        "total_decommissioned_assets": 1,
-                        "is_draft": False,
-                        "status": "published"
-                    }
-                }
+                schema=DepartmentWriteSerializer,
             ),
             400: openapi.Response(
                 description="Invalid data provided.",
@@ -290,6 +219,9 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def put(self, request, *args, **kwargs):
+        """
+        Update a department by its ID or slug.
+        """
         partial = True  # Enable partial updates
         return self.update(request, *args, **kwargs, partial=partial)
 
@@ -324,6 +256,9 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def delete(self, request, *args, **kwargs):
+        """
+        Delete a department by its ID or slug.
+        """
         return super().delete(request, *args, **kwargs)
 
 
@@ -371,22 +306,38 @@ class AssetList(generics.ListCreateAPIView):
     """
     List all assets or create a new asset.
     """
-    serializer_class = AssetSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         """
-        Override the queryset to only retrieve non-deleted assets.
+        Retrieve assets based on the 'status' query parameter.
         """
-        return Asset.objects.filter(is_removed=False)
+        queryset = Asset.objects.all()
+        status_param = self.request.query_params.get('status')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        else:
+            queryset = queryset.filter(status='published')  # Default to published
+        return queryset
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return AssetWriteSerializer
+        return AssetReadSerializer
 
     @swagger_auto_schema(
-        operation_description="Retrieve a list of all assets.",
-        responses={
-            200: openapi.Response(
-                description="List of all assets.",
-                schema=AssetSerializer(many=True),
+        operation_description="Retrieve a list of assets. Optionally filter by status.",
+        manual_parameters=[
+            openapi.Parameter(
+                'status', openapi.IN_QUERY,
+                description="Filter assets by status ('draft' or 'published')",
+                type=openapi.TYPE_STRING,
+                required=False,
+                enum=['draft', 'published']
             ),
+        ],
+        responses={
+            200: AssetReadSerializer(many=True),
             401: openapi.Response(
                 description="Unauthorized access.",
                 schema=openapi.Schema(
@@ -402,15 +353,18 @@ class AssetList(generics.ListCreateAPIView):
         }
     )
     def get(self, request, *args, **kwargs):
+        """
+        Retrieve a list of all assets.
+        """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Create a new asset.",
-        request_body=AssetSerializer,
+        request_body=AssetWriteSerializer,
         responses={
             201: openapi.Response(
                 description="Asset successfully created.",
-                schema=AssetSerializer,
+                schema=AssetWriteSerializer,
             ),
             400: openapi.Response(
                 description="Bad request - Invalid data submitted.",
@@ -437,6 +391,9 @@ class AssetList(generics.ListCreateAPIView):
         }
     )
     def post(self, request, *args, **kwargs):
+        """
+        Create a new asset.
+        """
         return super().post(request, *args, **kwargs)
 
 
@@ -444,17 +401,22 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update, or delete an asset.
     """
-    serializer_class = AssetSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Asset.objects.filter(is_removed=False)
+    queryset = Asset.objects.all()
     lookup_field = 'pk'
+
+    def get_serializer_class(self):
+        if self.request.method in ['GET']:
+            return AssetReadSerializer
+        else:
+            return AssetWriteSerializer
 
     @swagger_auto_schema(
         operation_description="Retrieve an asset by its primary key.",
         responses={
             200: openapi.Response(
                 description="Asset retrieved successfully.",
-                schema=AssetSerializer,
+                schema=AssetReadSerializer,
             ),
             404: openapi.Response(
                 description="Asset not found.",
@@ -478,15 +440,18 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def get(self, request, *args, **kwargs):
+        """
+        Retrieve an asset by its primary key.
+        """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
         operation_description="Update an asset by its primary key.",
-        request_body=AssetSerializer,
+        request_body=AssetWriteSerializer,
         responses={
             200: openapi.Response(
                 description="Asset updated successfully.",
-                schema=AssetSerializer,
+                schema=AssetWriteSerializer,
             ),
             400: openapi.Response(
                 description="Invalid data provided.",
@@ -520,16 +485,19 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def put(self, request, *args, **kwargs):
+        """
+        Update an asset by its primary key.
+        """
         partial = True  # Enable partial updates
         return self.update(request, *args, **kwargs, partial=partial)
 
     @swagger_auto_schema(
         operation_description="Partially update an asset by its primary key.",
-        request_body=AssetSerializer(partial=True),
+        request_body=AssetWriteSerializer(partial=True),
         responses={
             200: openapi.Response(
                 description="Asset partially updated successfully.",
-                schema=AssetSerializer,
+                schema=AssetWriteSerializer,
             ),
             400: openapi.Response(
                 description="Invalid data provided.",
@@ -563,6 +531,9 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def patch(self, request, *args, **kwargs):
+        """
+        Partially update an asset by its primary key.
+        """
         return super().partial_update(request, *args, **kwargs)
 
     @swagger_auto_schema(
@@ -593,6 +564,9 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def delete(self, request, *args, **kwargs):
+        """
+        Delete an asset by its primary key.
+        """
         return super().delete(request, *args, **kwargs)
 
 
@@ -665,7 +639,7 @@ class TrackingByDepartmentView(APIView):
     @swagger_auto_schema(
         operation_description="Retrieve all assets belonging to a specific department.",
         responses={
-            200: AssetSerializer(many=True),
+            200: AssetReadSerializer(many=True),
             404: "Department not found."
         },
         manual_parameters=[
@@ -681,7 +655,7 @@ class TrackingByDepartmentView(APIView):
     def get(self, request, identifier, format=None):
         department = get_object_by_id_or_slug(Department, identifier, id_field='id', slug_field='slug')
         assets = Asset.objects.filter(department=department, is_removed=False)
-        serializer = AssetSerializer(assets, many=True)
+        serializer = AssetReadSerializer(assets, many=True)
         return Response(serializer.data)
 
 
@@ -696,7 +670,7 @@ class TrackingByOperationalStatusView(APIView):
         responses={
             200: openapi.Response(
                 description="List of assets matching the specified operational status.",
-                schema=AssetSerializer(many=True),
+                schema=AssetReadSerializer(many=True),
             ),
             400: openapi.Response(
                 description="Invalid operational status provided.",
@@ -745,9 +719,131 @@ class TrackingByOperationalStatusView(APIView):
 
         # Filter assets based on the operational status
         assets = Asset.objects.filter(operational_status=status_query, is_removed=False)
-        serializer = AssetSerializer(assets, many=True)
+        serializer = AssetReadSerializer(assets, many=True)
         return Response(serializer.data)
 
+
+
+class SoftDeletedAssetsView(APIView):
+    """
+    View to list all soft-deleted assets.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Retrieve a list of all soft-deleted assets.",
+        responses={
+            200: openapi.Response(
+                description="List of soft-deleted assets.",
+                schema=AssetReadSerializer(many=True),
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={
+                    "application/json": {"detail": "Authentication credentials were not provided."}
+                }
+            ),
+        }
+    )
+    def get(self, request, format=None):
+        """
+        Retrieve all soft-deleted assets.
+        """
+        assets = Asset.all_objects.filter(is_removed=True)
+        serializer = AssetReadSerializer(assets, many=True)
+        return Response(serializer.data)
+
+
+@swagger_auto_schema(
+    method='post',
+    operation_description="Restore a soft-deleted asset.",
+    responses={
+        200: openapi.Response(
+            description="Asset restored successfully.",
+            examples={
+                "application/json": {"detail": "Asset restored successfully."}
+            }
+        ),
+        404: openapi.Response(
+            description="Asset not found or not soft-deleted.",
+            examples={
+                "application/json": {"detail": "Asset not found or not soft-deleted."}
+            }
+        ),
+    },
+    manual_parameters=[
+        openapi.Parameter(
+            'pk', openapi.IN_PATH,
+            description="Primary key of the asset to restore",
+            type=openapi.TYPE_INTEGER,
+            required=True,
+        )
+    ]
+)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def restore_asset(request, pk):
+    """
+    Restore a soft-deleted asset by its primary key.
+
+    Parameters:
+    - pk (int): Primary key of the asset to restore.
+
+    Returns:
+    - 200 OK: Asset restored successfully.
+    - 404 Not Found: Asset not found or not soft-deleted.
+    """
+    try:
+        asset = Asset.all_objects.get(pk=pk, is_removed=True)
+        asset.is_removed = False
+        asset.save()
+        return Response({'detail': 'Asset restored successfully.'}, status=status.HTTP_200_OK)
+    except Asset.DoesNotExist:
+        return Response({'detail': 'Asset not found or not soft-deleted.'}, status=status.HTTP_404_NOT_FOUND)
+    
+    
+@swagger_auto_schema(
+    method='delete',
+    operation_description="Permanently delete a soft-deleted asset.",
+    responses={
+        204: openapi.Response(
+            description="Asset permanently deleted.",
+        ),
+        404: openapi.Response(
+            description="Asset not found or not soft-deleted.",
+            examples={
+                "application/json": {"detail": "Asset not found or not soft-deleted."}
+            }
+        ),
+    },
+    manual_parameters=[
+        openapi.Parameter(
+            'pk', openapi.IN_PATH,
+            description="Primary key of the asset to permanently delete",
+            type=openapi.TYPE_INTEGER,
+            required=True,
+        )
+    ]
+)
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated, IsAdminOrSuperAdmin])
+def permanent_delete_asset(request, pk):
+    """
+    Permanently delete a soft-deleted asset by its primary key.
+
+    Parameters:
+    - pk (int): Primary key of the asset to permanently delete.
+
+    Returns:
+    - 204 No Content: Asset permanently deleted.
+    - 404 Not Found: Asset not found or not soft-deleted.
+    """
+    try:
+        asset = Asset.all_objects.get(pk=pk, is_removed=True)
+        asset.delete()
+        return Response({'detail': 'Asset permanently deleted.'}, status=status.HTTP_204_NO_CONTENT)
+    except Asset.DoesNotExist:
+        return Response({'detail': 'Asset not found or not soft-deleted.'}, status=status.HTTP_404_NOT_FOUND)
 
 
 

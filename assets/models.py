@@ -42,7 +42,6 @@ class Department(ConditionalValidationMixin, StatusModel, SoftDeletableModel, Ti
         ]
     
     # Custom managers
-    objects = models.Manager()
     published = QueryManager(status=STATUS.published)
     draft = QueryManager(status=STATUS.draft)
         
@@ -141,7 +140,6 @@ class Asset(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeSta
         ]
 
 
-    objects = models.Manager()  # The default manager
     published = QueryManager(status=STATUS.published)
     draft = QueryManager(status=STATUS.draft)
     active = QueryManager(operational_status='active')
