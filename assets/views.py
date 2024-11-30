@@ -312,12 +312,10 @@ class AssetList(generics.ListCreateAPIView):
         """
         Retrieve assets based on the 'status' query parameter.
         """
-        queryset = Asset.objects.all()
+        queryset = Asset.all_objects.all()
         status_param = self.request.query_params.get('status')
         if status_param:
             queryset = queryset.filter(status=status_param)
-        else:
-            queryset = queryset.filter(status='published')  # Default to published
         return queryset
 
     def get_serializer_class(self):
