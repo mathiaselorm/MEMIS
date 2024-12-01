@@ -1,5 +1,6 @@
+from django.db.models import F, Value, CharField, Case, When
 from rest_framework import generics, filters, status, permissions
-from django_filters.rest_framework import DjangoFilterBackend
+from django_filters.rest_framework import DjangoFilterBackend, CharFilter, FilterSet
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -180,6 +181,28 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 # --------- ITEM VIEWS --------- #
 
+class ItemFilterSet(FilterSet):
+    stock_status = CharFilter(method='filter_by_stock_status')
+
+    class Meta:
+        model = Item
+        fields = ['location', 'category', 'status', 'is_removed', 'stock_status']
+
+    def filter_by_stock_status(self, queryset, name, value):
+        value = value.lower()
+        if value not in ['in stock', 'out of stock', 'archived']:
+            return queryset.none()
+        # Annotate the queryset with stock_status
+        queryset = queryset.annotate(
+            stock_status=Case(
+                When(is_removed=True, then=Value('Archived')),
+                When(current_stock=0, then=Value('Out of Stock')),
+                default=Value('In Stock'),
+                output_field=CharField(),
+            )
+        )
+        return queryset.filter(stock_status__iexact=value)
+
 class ItemListCreateView(generics.ListCreateAPIView):
     """
     Retrieve a list of items or create a new item.
@@ -187,10 +210,10 @@ class ItemListCreateView(generics.ListCreateAPIView):
     """
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = ItemFilterSet
     search_fields = ['descriptive_name', 'serial_number']
-    filterset_fields = ['location', 'category', 'status', 'is_removed']
-    ordering_fields = ['descriptive_name', 'id', 'created']
-    ordering = ['id']
+    ordering_fields = ['current_stock', 'descriptive_name', 'created']
+    ordering = ['descriptive_name']
 
     def get_queryset(self):
         queryset = Item.all_objects.all()
@@ -240,6 +263,13 @@ class ItemListCreateView(generics.ListCreateAPIView):
                 description="Filter items by category ID",
                 type=openapi.TYPE_INTEGER,
                 required=False
+            ),
+            openapi.Parameter(
+                'stock_status', openapi.IN_QUERY,
+                description="Filter items by stock status ('In Stock', 'Out of Stock', 'Archived')",
+                type=openapi.TYPE_STRING,
+                required=False,
+                enum=['In Stock', 'Out of Stock', 'Archived']
             ),
         ]
     )
