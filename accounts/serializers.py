@@ -178,37 +178,8 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             created_via='registration'
         )
 
-        # # Optionally, log the default password (not recommended for production)
-        # logger.debug(f"Default password for {user.email}: {default_password}")
-
         return user
     
-    # def create(self, validated_data):
-    #     user_role_value = validated_data.pop('user_role')
-    #     validated_data['user_role'] = user_role_value
-
-    #     # Create the user without a password
-    #     user = User.objects.create_user(**validated_data)
-    #     user.set_unusable_password()
-    #     user.save()
-    #     logger.info(f"User created successfully: {user.email}")
-
-    #     # Trigger the password reset process
-    #     token = ResetPasswordToken.objects.create(
-    #         user=user,
-    #         user_agent=self.context['request'].META.get('HTTP_USER_AGENT', ''),
-    #         ip_address=self.context['request'].META.get('REMOTE_ADDR', ''),
-    #     )
-
-    #     # Send the reset password token created signal with additional context
-    #     reset_password_token_created.send(
-    #         sender=self.__class__,
-    #         instance=self,
-    #         reset_password_token=token,
-    #         created_via='registration'
-    #     )
-
-    #     return user
 
 
 

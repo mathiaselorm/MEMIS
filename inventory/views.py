@@ -1,49 +1,84 @@
-from rest_framework import generics, filters, status
+from rest_framework import generics, filters, status, permissions
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.response import Response
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
+from accounts.permissions import IsAdminOrSuperAdmin
 from auditlog.models import LogEntry
 from .models import Category, Item
-from django.shortcuts import get_object_or_404
-from .serializers import CategorySerializer, ItemSerializer, InventoryLogEntrySerializer
+from .serializers import (
+    CategoryReadSerializer, CategoryWriteSerializer,
+    ItemReadSerializer, ItemWriteSerializer,
+    InventoryLogEntrySerializer
+)
 from .utils import get_object_by_id_or_slug
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
+
+
+
 # --------- CATEGORY VIEWS --------- #
+
 class CategoryListCreateView(generics.ListCreateAPIView):
     """
     Retrieve a list of categories or create a new category.
-    Only non-deleted categories are listed.
+    Returns all categories, including soft-deleted and with any status.
     """
-    queryset = Category.objects.filter(is_removed=False)
     permission_classes = [IsAuthenticated]
-    serializer_class = CategorySerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
     search_fields = ['name']
     ordering_fields = ['name', 'created', 'modified']
     ordering = ['name']
 
+    def get_queryset(self):
+        queryset = Category.all_objects.all()
+        status_param = self.request.query_params.get('status')
+        is_removed_param = self.request.query_params.get('is_removed')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        if is_removed_param is not None:
+            is_removed = is_removed_param.lower() == 'true'
+            queryset = queryset.filter(is_removed=is_removed)
+        return queryset
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return CategoryWriteSerializer
+        return CategoryReadSerializer
+
     @swagger_auto_schema(
-        operation_description="Retrieve a list of all non-deleted categories.",
+        operation_description="Retrieve a list of categories.",
         responses={
-            200: openapi.Response(
-                description="A list of categories retrieved successfully.",
-                schema=CategorySerializer(many=True)
-            )
-        }
+            200: CategoryReadSerializer(many=True),
+        },
+        manual_parameters=[
+            openapi.Parameter(
+                'status', openapi.IN_QUERY,
+                description="Filter categories by status ('draft' or 'published')",
+                type=openapi.TYPE_STRING,
+                required=False,
+                enum=['draft', 'published']
+            ),
+            openapi.Parameter(
+                'is_removed', openapi.IN_QUERY,
+                description="Filter categories by soft delete status ('true' or 'false')",
+                type=openapi.TYPE_STRING,
+                required=False,
+                enum=['true', 'false']
+            ),
+        ]
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Create a new category. Set `is_draft` to True to save as a draft.",
-        request_body=CategorySerializer(),
+        operation_description="Create a new category.",
+        request_body=CategoryWriteSerializer,
         responses={
             201: openapi.Response(
                 description="Category created successfully.",
-                schema=CategorySerializer()
+                schema=CategoryReadSerializer()
             ),
             400: "Invalid input, object invalid."
         }
@@ -57,36 +92,56 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     Retrieve, update, or delete a category instance.
     Supports both slug and ID for identification.
     """
-    serializer_class = CategorySerializer
     permission_classes = [IsAuthenticated]
+    lookup_field = 'identifier'
 
     def get_object(self):
         identifier = self.kwargs.get("identifier")
-        category = get_object_by_id_or_slug(Category, identifier, id_field="id", slug_field="slug")
-        if category.is_removed:
-            raise NotFound("This category has been deleted.")
+        category = get_object_by_id_or_slug(Category, identifier, id_field="id", slug_field="slug", all_objects=True)
         return category
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return CategoryWriteSerializer
+        else:
+            return CategoryReadSerializer
+
+    def perform_destroy(self, instance):
+        if instance.is_removed:
+            # If user is Admin or SuperAdmin, permanently delete
+            if IsAdminOrSuperAdmin().has_permission(self.request, self):
+                instance.delete()
+            else:
+                raise PermissionDenied("You do not have permission to permanently delete this category.")
+        else:
+            # Set is_removed to True (soft delete)
+            instance.is_removed = True
+            instance.save()
 
     @swagger_auto_schema(
         operation_description="Retrieve a category by ID or slug.",
         responses={
-            200: openapi.Response(
-                description="Category retrieved successfully.",
-                schema=CategorySerializer()
-            ),
+            200: CategoryReadSerializer(),
             404: "Category not found."
-        }
+        },
+        manual_parameters=[
+            openapi.Parameter(
+                'identifier', openapi.IN_PATH,
+                description="ID or Slug of the category",
+                type=openapi.TYPE_STRING, required=True
+            )
+        ]
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Update a category by ID or slug. Set `is_draft` to True to save as a draft.",
-        request_body=CategorySerializer(),
+        operation_description="Update a category by ID or slug.",
+        request_body=CategoryWriteSerializer,
         responses={
             200: openapi.Response(
                 description="Category updated successfully.",
-                schema=CategorySerializer()
+                schema=CategoryReadSerializer()
             ),
             400: "Invalid data provided.",
             404: "Category not found."
@@ -96,52 +151,104 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Soft delete a category by ID or slug.",
-        responses={204: "Category soft-deleted successfully.", 404: "Category not found."}
+        operation_description="Partially update a category by ID or slug.",
+        request_body=CategoryWriteSerializer(partial=True),
+        responses={
+            200: openapi.Response(
+                description="Category updated successfully.",
+                schema=CategoryReadSerializer()
+            ),
+            400: "Invalid data provided.",
+            404: "Category not found."
+        }
+    )
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Delete a category by ID or slug.",
+        responses={204: "Category deleted successfully.", 404: "Category not found."}
     )
     def delete(self, request, *args, **kwargs):
-        category = self.get_object()
-        category.delete()  # Soft-delete
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
+        return super().delete(request, *args, **kwargs)
 
 # --------- ITEM VIEWS --------- #
+
 class ItemListCreateView(generics.ListCreateAPIView):
     """
     Retrieve a list of items or create a new item.
     Supports filtering, search, and sorting.
     """
-    serializer_class = ItemSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['descriptive_name', 'serial_number']
-    filterset_fields = ['location', 'category']
-    ordering_fields = ['current_stock', 'descriptive_name', 'created']
-    ordering = ['descriptive_name']
+    filterset_fields = ['location', 'category', 'status', 'is_removed']
+    ordering_fields = ['descriptive_name', 'id', 'created']
+    ordering = ['id']
 
     def get_queryset(self):
-        queryset = Item.objects.filter(is_removed=False)
-        stock_status = self.request.query_params.get('stock_status')
-        if stock_status:
-            queryset = queryset.filter(stock_status=stock_status)
+        queryset = Item.all_objects.all()
+        status_param = self.request.query_params.get('status')
+        is_removed_param = self.request.query_params.get('is_removed')
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+        if is_removed_param is not None:
+            is_removed = is_removed_param.lower() == 'true'
+            queryset = queryset.filter(is_removed=is_removed)
         return queryset
 
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return ItemWriteSerializer
+        return ItemReadSerializer
+
     @swagger_auto_schema(
-        operation_description="Retrieve a list of all non-deleted items with filtering and sorting options.",
+        operation_description="Retrieve a list of items.",
+        responses={
+            200: ItemReadSerializer(many=True),
+        },
         manual_parameters=[
             openapi.Parameter(
-                'stock_status', in_=openapi.IN_QUERY, description="Filter items by stock status.", type=openapi.TYPE_STRING
-            )
-        ],
-        responses={200: openapi.Response(description="A list of items.", schema=ItemSerializer(many=True))}
+                'status', openapi.IN_QUERY,
+                description="Filter items by status ('draft' or 'published')",
+                type=openapi.TYPE_STRING,
+                required=False,
+                enum=['draft', 'published']
+            ),
+            openapi.Parameter(
+                'is_removed', openapi.IN_QUERY,
+                description="Filter items by soft delete status ('true' or 'false')",
+                type=openapi.TYPE_STRING,
+                required=False,
+                enum=['true', 'false']
+            ),
+            openapi.Parameter(
+                'location', openapi.IN_QUERY,
+                description="Filter items by location",
+                type=openapi.TYPE_STRING,
+                required=False
+            ),
+            openapi.Parameter(
+                'category', openapi.IN_QUERY,
+                description="Filter items by category ID",
+                type=openapi.TYPE_INTEGER,
+                required=False
+            ),
+        ]
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Create a new item. Set `is_draft` to True to save as a draft.",
-        request_body=ItemSerializer(),
-        responses={201: openapi.Response(description="Item created successfully.", schema=ItemSerializer())}
+        operation_description="Create a new item.",
+        request_body=ItemWriteSerializer,
+        responses={
+            201: openapi.Response(
+                description="Item created successfully.",
+                schema=ItemReadSerializer()
+            ),
+            400: "Invalid input, object invalid."
+        }
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
@@ -150,27 +257,54 @@ class ItemListCreateView(generics.ListCreateAPIView):
 class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update, or delete an item instance.
-    Soft-deleted items are not retrievable.
     """
-    serializer_class = ItemSerializer
     permission_classes = [IsAuthenticated]
-    queryset = Item.objects.filter(is_removed=False)  # Defined queryset
+    queryset = Item.all_objects.all()
+    lookup_field = 'pk'
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return ItemWriteSerializer
+        else:
+            return ItemReadSerializer
+
+    def perform_destroy(self, instance):
+        if instance.is_removed:
+            # If user is Admin or SuperAdmin, permanently delete
+            if IsAdminOrSuperAdmin().has_permission(self.request, self):
+                instance.delete()
+            else:
+                raise PermissionDenied("You do not have permission to permanently delete this item.")
+        else:
+            # Set is_removed to True (soft delete)
+            instance.is_removed = True
+            instance.save()
 
     @swagger_auto_schema(
-        operation_description="Retrieve a specific item by its ID.",
+        operation_description="Retrieve an item by ID.",
         responses={
-            200: openapi.Response(description="Item retrieved successfully.", schema=ItemSerializer()),
+            200: ItemReadSerializer(),
             404: "Item not found."
-        }
+        },
+        manual_parameters=[
+            openapi.Parameter(
+                'pk', openapi.IN_PATH,
+                description="Primary key of the item",
+                type=openapi.TYPE_INTEGER, required=True
+            )
+        ]
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Update an item by its ID. Set `is_draft` to True to save as a draft.",
-        request_body=ItemSerializer(),
+        operation_description="Update an item by ID.",
+        request_body=ItemWriteSerializer,
         responses={
-            200: openapi.Response(description="Item updated successfully.", schema=ItemSerializer()),
+            200: openapi.Response(
+                description="Item updated successfully.",
+                schema=ItemReadSerializer()
+            ),
             400: "Invalid data provided.",
             404: "Item not found."
         }
@@ -179,21 +313,41 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        operation_description="Delete an item by its ID, triggering a soft-delete mechanism.",
-        responses={204: "Item deleted successfully.", 404: "Item not found."}
+        operation_description="Partially update an item by ID.",
+        request_body=ItemWriteSerializer(partial=True),
+        responses={
+            200: openapi.Response(
+                description="Item updated successfully.",
+                schema=ItemReadSerializer()
+            ),
+            400: "Invalid data provided.",
+            404: "Item not found."
+        }
+    )
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Delete an item by ID.",
+        responses={204: "Item deleted successfully.", 404: "Item not found."},
+        manual_parameters=[
+            openapi.Parameter(
+                'pk', openapi.IN_PATH,
+                description="Primary key of the item",
+                type=openapi.TYPE_INTEGER, required=True
+            )
+        ]
     )
     def delete(self, request, *args, **kwargs):
-        item = self.get_object()
-        item.delete()  # Soft-delete
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-
+        return super().delete(request, *args, **kwargs)
+    
+    
 # --------- CATEGORY ITEM LIST VIEW --------- #
 class CategoryItemsListView(generics.ListAPIView):
     """
     Retrieve all items within a category, identified by slug or ID.
     """
-    serializer_class = ItemSerializer
+    serializer_class = ItemReadSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['descriptive_name', 'serial_number']
@@ -211,11 +365,13 @@ class CategoryItemsListView(generics.ListAPIView):
         manual_parameters=[
             openapi.Parameter('identifier', openapi.IN_PATH, description="ID or slug of the category", type=openapi.TYPE_STRING, required=True)
         ],
-        responses={200: openapi.Response(description="A list of items within the category.", schema=ItemSerializer(many=True))}
+        responses={200: openapi.Response(description="A list of items within the category.", schema=ItemReadSerializer(many=True))}
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
 
+
+# --------- AUDIT LOG VIEW --------- #
 
 class AuditLogView(generics.ListAPIView):
     """

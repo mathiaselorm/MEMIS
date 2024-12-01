@@ -35,19 +35,12 @@ class Category(ConditionalValidationMixin, StatusModel, SoftDeletableModel, Time
         ]
 
     # Custom managers
-    objects = models.Manager()
+    all_objects = models.Manager()  # Include all objects, even soft-deleted
     published = QueryManager(status=STATUS.published)
     draft = QueryManager(status=STATUS.draft)
 
-    def publish(self):
-        if self.status != self.STATUS.published:
-            self.status = self.STATUS.published
-            self.save()
-
     def __str__(self):
         return self.name
-    
-    
 
 class Item(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStampedModel):
     """
@@ -67,26 +60,21 @@ class Item(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStam
     current_stock = models.IntegerField(validators=[MinValueValidator(0)])
     location = models.CharField(max_length=255)
     STATUS = Choices('draft', 'published')
-    
+
     class Meta:
         verbose_name_plural = "items"
         constraints = [
             UniqueConstraint(
                 fields=['serial_number'],
                 condition=Q(status='published'),
-                name='unique_item_serial_number_when_published'  # Updated constraint name
+                name='unique_item_serial_number_when_published'
             )
         ]
 
     # Custom managers
-    objects = models.Manager()
+    all_objects = models.Manager()  # Include all objects, even soft-deleted
     published = QueryManager(status=STATUS.published)
     draft = QueryManager(status=STATUS.draft)
-
-    def publish(self):
-        if self.status != self.STATUS.published:
-            self.status = self.STATUS.published
-            self.save()
 
     def __str__(self):
         return f"{self.descriptive_name}"
@@ -102,8 +90,6 @@ class Item(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStam
             return "Out of Stock"
         else:
             return "In Stock"
-
-
 
 # Register models with auditlog
 auditlog.register(Item)

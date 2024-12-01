@@ -1,7 +1,6 @@
 from django.contrib import admin
 from .models import Category, Item
 
-
 class StatusAdminMixin:
     """
     Mixin to add draft/publish actions to the admin panel for models with a status field.
@@ -13,10 +12,8 @@ class StatusAdminMixin:
     mark_as_draft.short_description = "Mark selected items as Draft"
 
     def mark_as_published(self, request, queryset):
-        for obj in queryset:
-            obj.publish()
+        queryset.update(status=queryset.model.STATUS.published)
     mark_as_published.short_description = "Mark selected items as Published"
-
 
 class CategoryAdmin(StatusAdminMixin, admin.ModelAdmin):
     list_display = ('name', 'slug', 'status', 'created', 'modified', 'is_removed')
@@ -24,12 +21,9 @@ class CategoryAdmin(StatusAdminMixin, admin.ModelAdmin):
     readonly_fields = ('slug', 'created', 'modified')
     list_filter = ('status', 'is_removed')
 
-    def save_model(self, request, obj, form, change):
-        if not obj.pk:
-            # Save as draft if new, otherwise retain status
-            obj.status = obj.STATUS.draft
-        super().save_model(request, obj, form, change)
-
+    def get_queryset(self, request):
+        # Include soft-deleted items
+        return Category.all_objects.all()
 
 class ItemAdmin(StatusAdminMixin, admin.ModelAdmin):
     list_display = (
@@ -51,12 +45,9 @@ class ItemAdmin(StatusAdminMixin, admin.ModelAdmin):
         }),
     )
 
-    def save_model(self, request, obj, form, change):
-        # Automatically set status as draft if creating new object
-        if not obj.pk:
-            obj.status = obj.STATUS.draft
-        super().save_model(request, obj, form, change)
-
+    def get_queryset(self, request):
+        # Include soft-deleted items
+        return Item.all_objects.all()
 
 # Register the models with customized admin classes
 admin.site.register(Category, CategoryAdmin)

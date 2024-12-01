@@ -17,6 +17,8 @@ from decouple import config
 import cloudinary
 import cloudinary.uploader
 
+from celery.schedules import crontab
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -83,6 +85,9 @@ CELERY_WORKER_REDIRECT_STDOUTS = True
 CELERY_WORKER_REDIRECT_STDOUTS_LEVEL = 'DEBUG'
 
 
+
+
+
 PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 
 
@@ -142,7 +147,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'simple_history.middleware.HistoryRequestMiddleware',
+    # 'simple_history.middleware.HistoryRequestMiddleware',
 ]
 
 REST_FRAMEWORK = {
