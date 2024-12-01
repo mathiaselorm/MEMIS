@@ -60,6 +60,7 @@ class DepartmentList(generics.ListCreateAPIView):
         return DepartmentReadSerializer
     
     @swagger_auto_schema(
+        tags=['Departments'],
         operation_description="Retrieve a list of departments. Optionally filter by status.",
         manual_parameters=[
             openapi.Parameter(
@@ -76,6 +77,7 @@ class DepartmentList(generics.ListCreateAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Departments'],
         operation_description="Create a new department. Only staff users have permission to create.",
         request_body=DepartmentWriteSerializer,
         responses={
@@ -167,6 +169,7 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
             instance.save()
 
     @swagger_auto_schema(
+        tags=['Departments'],
         operation_description="Retrieve a department by its ID or slug.",
         responses={
             200: openapi.Response(
@@ -204,6 +207,7 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Departments'],
         operation_description="Update a department by its ID or slug. Supports partial updates.",
         request_body=DepartmentWriteSerializer,
         responses={
@@ -258,6 +262,7 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         return self.update(request, *args, **kwargs, partial=partial)
 
     @swagger_auto_schema(
+        tags=['Departments'],
         operation_description="Delete a department by its ID or slug.",
         responses={
             204: openapi.Response(
@@ -301,6 +306,7 @@ class TotalDepartmentsView(generics.GenericAPIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
+        tags=['Departments'],
         operation_description="Retrieve the total number of departments in the system.",
         responses={
             200: openapi.Response(
@@ -360,6 +366,7 @@ class AssetList(generics.ListCreateAPIView):
         return AssetReadSerializer
 
     @swagger_auto_schema(
+        tags=['Assets'],
         operation_description="Retrieve a list of assets. Optionally filter by status.",
         manual_parameters=[
             openapi.Parameter(
@@ -393,6 +400,7 @@ class AssetList(generics.ListCreateAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Assets'],
         operation_description="Create a new asset.",
         request_body=AssetWriteSerializer,
         responses={
@@ -458,6 +466,7 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
             instance.save()
 
     @swagger_auto_schema(
+        tags=['Assets'],
         operation_description="Retrieve an asset by its primary key.",
         responses={
             200: openapi.Response(
@@ -492,6 +501,7 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Assets'],
         operation_description="Update an asset by its primary key.",
         request_body=AssetWriteSerializer,
         responses={
@@ -538,6 +548,7 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
         return self.update(request, *args, **kwargs, partial=partial)
 
     @swagger_auto_schema(
+        tags=['Assets'],
         operation_description="Partially update an asset by its primary key.",
         request_body=AssetWriteSerializer(partial=True),
         responses={
@@ -583,6 +594,7 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
         return super().partial_update(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Assets'],
         operation_description="Delete an asset by its primary key. If the asset is not soft-deleted, it will be soft-deleted. If it is already soft-deleted, it will be permanently deleted (only for Admin or SuperAdmin).",
         responses={
             204: openapi.Response(
@@ -623,6 +635,7 @@ class TotalAssetsView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
+        tags=['Assets'],
         operation_description="Get the total number of assets currently registered in the system.",
         responses={
             200: openapi.Response(
@@ -651,6 +664,7 @@ class TotalAssetsUnderMaintenanceView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
+        tags=['Assets'],
         operation_description="Get the total number of assets currently under maintenance.",
         responses={
             200: openapi.Response(
@@ -676,220 +690,222 @@ class TotalAssetsUnderMaintenanceView(APIView):
         return Response({'assets_under_maintenance': assets_under_maintenance_count})
 
 
-class TrackingByDepartmentView(APIView):
-    """
-    View to return all assets under a specific department.
-    """
-    permission_classes = [IsAuthenticated]
+# class TrackingByDepartmentView(APIView):
+#     """
+#     View to return all assets under a specific department.
+#     """
+#     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        operation_description="Retrieve all assets belonging to a specific department.",
-        responses={
-            200: AssetReadSerializer(many=True),
-            404: "Department not found."
-        },
-        manual_parameters=[
-            openapi.Parameter(
-                'identifier',
-                openapi.IN_PATH,
-                description="ID or slug of the department to fetch assets for",
-                type=openapi.TYPE_STRING,
-                required=True
-            )
-        ]
-    )
-    def get(self, request, identifier, format=None):
-        department = get_object_by_id_or_slug(Department, identifier, id_field='id', slug_field='slug')
-        assets = Asset.objects.filter(department=department, is_removed=False)
-        serializer = AssetReadSerializer(assets, many=True)
-        return Response(serializer.data)
-
-
-class TrackingByOperationalStatusView(APIView):
-    """
-    View to return all assets filtered by a given operational status.
-    """
-    permission_classes = [IsAuthenticated]
-
-    @swagger_auto_schema(
-        operation_description="Retrieve all assets filtered by a specific operational status.",
-        responses={
-            200: openapi.Response(
-                description="List of assets matching the specified operational status.",
-                schema=AssetReadSerializer(many=True),
-            ),
-            400: openapi.Response(
-                description="Invalid operational status provided.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "error": openapi.Schema(type=openapi.TYPE_STRING)
-                    }
-                ),
-                examples={
-                    "application/json": {"error": "Invalid operational status provided."}
-                }
-            ),
-            401: openapi.Response(
-                description="Unauthorized access.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "detail": openapi.Schema(type=openapi.TYPE_STRING)
-                    }
-                ),
-                examples={
-                    "application/json": {"detail": "Authentication credentials were not provided."}
-                }
-            ),
-        },
-        manual_parameters=[
-            openapi.Parameter(
-                'operational_status',
-                openapi.IN_QUERY,
-                description="The operational status to filter assets by",
-                type=openapi.TYPE_STRING,
-                required=True,
-                enum=[choice[0] for choice in Asset.OPERATIONAL_STATUS]  # Corrected line
-            )
-        ]
-    )
-    def get(self, request, format=None):
-        # Retrieve the operational status from the query parameters
-        status_query = request.query_params.get('operational_status')
-
-        # Validate the operational status
-        valid_statuses = [choice[0] for choice in Asset.OPERATIONAL_STATUS]
-        if status_query not in valid_statuses:
-            return Response({'error': 'Invalid operational status provided.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Filter assets based on the operational status
-        assets = Asset.objects.filter(operational_status=status_query, is_removed=False)
-        serializer = AssetReadSerializer(assets, many=True)
-        return Response(serializer.data)
+#     @swagger_auto_schema(
+#         tags=['Assets'],
+#         operation_description="Retrieve all assets belonging to a specific department.",
+#         responses={
+#             200: AssetReadSerializer(many=True),
+#             404: "Department not found."
+#         },
+#         manual_parameters=[
+#             openapi.Parameter(
+#                 'identifier',
+#                 openapi.IN_PATH,
+#                 description="ID or slug of the department to fetch assets for",
+#                 type=openapi.TYPE_STRING,
+#                 required=True
+#             )
+#         ]
+#     )
+#     def get(self, request, identifier, format=None):
+#         department = get_object_by_id_or_slug(Department, identifier, id_field='id', slug_field='slug')
+#         assets = Asset.objects.filter(department=department, is_removed=False)
+#         serializer = AssetReadSerializer(assets, many=True)
+#         return Response(serializer.data)
 
 
+# class TrackingByOperationalStatusView(APIView):
+#     """
+#     View to return all assets filtered by a given operational status.
+#     """
+#     permission_classes = [IsAuthenticated]
 
-class SoftDeletedAssetsView(APIView):
-    """
-    View to list all soft-deleted assets.
-    """
-    permission_classes = [IsAuthenticated]
+#     @swagger_auto_schema(
+#         tags=['Assets'],
+#         operation_description="Retrieve all assets filtered by a specific operational status.",
+#         responses={
+#             200: openapi.Response(
+#                 description="List of assets matching the specified operational status.",
+#                 schema=AssetReadSerializer(many=True),
+#             ),
+#             400: openapi.Response(
+#                 description="Invalid operational status provided.",
+#                 schema=openapi.Schema(
+#                     type=openapi.TYPE_OBJECT,
+#                     properties={
+#                         "error": openapi.Schema(type=openapi.TYPE_STRING)
+#                     }
+#                 ),
+#                 examples={
+#                     "application/json": {"error": "Invalid operational status provided."}
+#                 }
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized access.",
+#                 schema=openapi.Schema(
+#                     type=openapi.TYPE_OBJECT,
+#                     properties={
+#                         "detail": openapi.Schema(type=openapi.TYPE_STRING)
+#                     }
+#                 ),
+#                 examples={
+#                     "application/json": {"detail": "Authentication credentials were not provided."}
+#                 }
+#             ),
+#         },
+#         manual_parameters=[
+#             openapi.Parameter(
+#                 'operational_status',
+#                 openapi.IN_QUERY,
+#                 description="The operational status to filter assets by",
+#                 type=openapi.TYPE_STRING,
+#                 required=True,
+#                 enum=[choice[0] for choice in Asset.OPERATIONAL_STATUS]  # Corrected line
+#             )
+#         ]
+#     )
+#     def get(self, request, format=None):
+#         # Retrieve the operational status from the query parameters
+#         status_query = request.query_params.get('operational_status')
 
-    @swagger_auto_schema(
-        operation_description="Retrieve a list of all soft-deleted assets.",
-        responses={
-            200: openapi.Response(
-                description="List of soft-deleted assets.",
-                schema=AssetReadSerializer(many=True),
-            ),
-            401: openapi.Response(
-                description="Unauthorized access.",
-                examples={
-                    "application/json": {"detail": "Authentication credentials were not provided."}
-                }
-            ),
-        }
-    )
-    def get(self, request, format=None):
-        """
-        Retrieve all soft-deleted assets.
-        """
-        assets = Asset.all_objects.filter(is_removed=True)
-        serializer = AssetReadSerializer(assets, many=True)
-        return Response(serializer.data)
+#         # Validate the operational status
+#         valid_statuses = [choice[0] for choice in Asset.OPERATIONAL_STATUS]
+#         if status_query not in valid_statuses:
+#             return Response({'error': 'Invalid operational status provided.'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         # Filter assets based on the operational status
+#         assets = Asset.objects.filter(operational_status=status_query, is_removed=False)
+#         serializer = AssetReadSerializer(assets, many=True)
+#         return Response(serializer.data)
 
 
-@swagger_auto_schema(
-    method='post',
-    operation_description="Restore a soft-deleted asset.",
-    responses={
-        200: openapi.Response(
-            description="Asset restored successfully.",
-            examples={
-                "application/json": {"detail": "Asset restored successfully."}
-            }
-        ),
-        404: openapi.Response(
-            description="Asset not found or not soft-deleted.",
-            examples={
-                "application/json": {"detail": "Asset not found or not soft-deleted."}
-            }
-        ),
-    },
-    manual_parameters=[
-        openapi.Parameter(
-            'pk', openapi.IN_PATH,
-            description="Primary key of the asset to restore",
-            type=openapi.TYPE_INTEGER,
-            required=True,
-        )
-    ]
-)
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def restore_asset(request, pk):
-    """
-    Restore a soft-deleted asset by its primary key.
 
-    Parameters:
-    - pk (int): Primary key of the asset to restore.
+# class SoftDeletedAssetsView(APIView):
+#     """
+#     View to list all soft-deleted assets.
+#     """
+#     permission_classes = [IsAuthenticated]
 
-    Returns:
-    - 200 OK: Asset restored successfully.
-    - 404 Not Found: Asset not found or not soft-deleted.
-    """
-    try:
-        asset = Asset.all_objects.get(pk=pk, is_removed=True)
-        asset.is_removed = False
-        asset.save()
-        return Response({'detail': 'Asset restored successfully.'}, status=status.HTTP_200_OK)
-    except Asset.DoesNotExist:
-        return Response({'detail': 'Asset not found or not soft-deleted.'}, status=status.HTTP_404_NOT_FOUND)
+#     @swagger_auto_schema(
+#         operation_description="Retrieve a list of all soft-deleted assets.",
+#         responses={
+#             200: openapi.Response(
+#                 description="List of soft-deleted assets.",
+#                 schema=AssetReadSerializer(many=True),
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized access.",
+#                 examples={
+#                     "application/json": {"detail": "Authentication credentials were not provided."}
+#                 }
+#             ),
+#         }
+#     )
+#     def get(self, request, format=None):
+#         """
+#         Retrieve all soft-deleted assets.
+#         """
+#         assets = Asset.all_objects.filter(is_removed=True)
+#         serializer = AssetReadSerializer(assets, many=True)
+#         return Response(serializer.data)
+
+
+# @swagger_auto_schema(
+#     method='post',
+#     operation_description="Restore a soft-deleted asset.",
+#     responses={
+#         200: openapi.Response(
+#             description="Asset restored successfully.",
+#             examples={
+#                 "application/json": {"detail": "Asset restored successfully."}
+#             }
+#         ),
+#         404: openapi.Response(
+#             description="Asset not found or not soft-deleted.",
+#             examples={
+#                 "application/json": {"detail": "Asset not found or not soft-deleted."}
+#             }
+#         ),
+#     },
+#     manual_parameters=[
+#         openapi.Parameter(
+#             'pk', openapi.IN_PATH,
+#             description="Primary key of the asset to restore",
+#             type=openapi.TYPE_INTEGER,
+#             required=True,
+#         )
+#     ]
+# )
+# @api_view(['POST'])
+# @permission_classes([IsAuthenticated])
+# def restore_asset(request, pk):
+#     """
+#     Restore a soft-deleted asset by its primary key.
+
+#     Parameters:
+#     - pk (int): Primary key of the asset to restore.
+
+#     Returns:
+#     - 200 OK: Asset restored successfully.
+#     - 404 Not Found: Asset not found or not soft-deleted.
+#     """
+#     try:
+#         asset = Asset.all_objects.get(pk=pk, is_removed=True)
+#         asset.is_removed = False
+#         asset.save()
+#         return Response({'detail': 'Asset restored successfully.'}, status=status.HTTP_200_OK)
+#     except Asset.DoesNotExist:
+#         return Response({'detail': 'Asset not found or not soft-deleted.'}, status=status.HTTP_404_NOT_FOUND)
     
     
-@swagger_auto_schema(
-    method='delete',
-    operation_description="Permanently delete a soft-deleted asset.",
-    responses={
-        204: openapi.Response(
-            description="Asset permanently deleted.",
-        ),
-        404: openapi.Response(
-            description="Asset not found or not soft-deleted.",
-            examples={
-                "application/json": {"detail": "Asset not found or not soft-deleted."}
-            }
-        ),
-    },
-    manual_parameters=[
-        openapi.Parameter(
-            'pk', openapi.IN_PATH,
-            description="Primary key of the asset to permanently delete",
-            type=openapi.TYPE_INTEGER,
-            required=True,
-        )
-    ]
-)
-@api_view(['DELETE'])
-@permission_classes([IsAuthenticated, IsAdminOrSuperAdmin])
-def permanent_delete_asset(request, pk):
-    """
-    Permanently delete a soft-deleted asset by its primary key.
+# @swagger_auto_schema(
+#     method='delete',
+#     operation_description="Permanently delete a soft-deleted asset.",
+#     responses={
+#         204: openapi.Response(
+#             description="Asset permanently deleted.",
+#         ),
+#         404: openapi.Response(
+#             description="Asset not found or not soft-deleted.",
+#             examples={
+#                 "application/json": {"detail": "Asset not found or not soft-deleted."}
+#             }
+#         ),
+#     },
+#     manual_parameters=[
+#         openapi.Parameter(
+#             'pk', openapi.IN_PATH,
+#             description="Primary key of the asset to permanently delete",
+#             type=openapi.TYPE_INTEGER,
+#             required=True,
+#         )
+#     ]
+# )
+# @api_view(['DELETE'])
+# @permission_classes([IsAuthenticated, IsAdminOrSuperAdmin])
+# def permanent_delete_asset(request, pk):
+#     """
+#     Permanently delete a soft-deleted asset by its primary key.
 
-    Parameters:
-    - pk (int): Primary key of the asset to permanently delete.
+#     Parameters:
+#     - pk (int): Primary key of the asset to permanently delete.
 
-    Returns:
-    - 204 No Content: Asset permanently deleted.
-    - 404 Not Found: Asset not found or not soft-deleted.
-    """
-    try:
-        asset = Asset.all_objects.get(pk=pk, is_removed=True)
-        asset.delete()
-        return Response({'detail': 'Asset permanently deleted.'}, status=status.HTTP_204_NO_CONTENT)
-    except Asset.DoesNotExist:
-        return Response({'detail': 'Asset not found or not soft-deleted.'}, status=status.HTTP_404_NOT_FOUND)
+#     Returns:
+#     - 204 No Content: Asset permanently deleted.
+#     - 404 Not Found: Asset not found or not soft-deleted.
+#     """
+#     try:
+#         asset = Asset.all_objects.get(pk=pk, is_removed=True)
+#         asset.delete()
+#         return Response({'detail': 'Asset permanently deleted.'}, status=status.HTTP_204_NO_CONTENT)
+#     except Asset.DoesNotExist:
+#         return Response({'detail': 'Asset not found or not soft-deleted.'}, status=status.HTTP_404_NOT_FOUND)
 
 
 
@@ -927,6 +943,7 @@ class AssetActivitiesByAssetView(generics.ListCreateAPIView):
         serializer.save(asset=asset)
 
     @swagger_auto_schema(
+        tags=['Asset Activities'],
         operation_description="Retrieve all activities for a specific asset with optional filtering.",
         manual_parameters=[
             openapi.Parameter(
@@ -964,6 +981,7 @@ class AssetActivitiesByAssetView(generics.ListCreateAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Asset Activities'],
         operation_description="Create a new activity for a specific asset.",
         request_body=AssetActivityWriteSerializer,
         responses={
@@ -1012,6 +1030,7 @@ class AssetActivityDetailByAssetView(generics.RetrieveUpdateDestroyAPIView):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Asset Activities'],
         operation_description="Retrieve an activity for a specific asset.",
         manual_parameters=[
             openapi.Parameter(
@@ -1046,6 +1065,7 @@ class AssetActivityDetailByAssetView(generics.RetrieveUpdateDestroyAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Asset Activities'],
         operation_description="Update an activity for a specific asset. Supports partial updates.",
         request_body=AssetActivityWriteSerializer,
         responses={
@@ -1072,6 +1092,7 @@ class AssetActivityDetailByAssetView(generics.RetrieveUpdateDestroyAPIView):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Asset Activities'],
         operation_description="Delete an activity for a specific asset.",
         responses={
             204: openapi.Response(description="Activity deleted successfully."),
@@ -1113,6 +1134,7 @@ class AssetActivityListCreateView(generics.ListCreateAPIView):
         return AssetActivityReadSerializer
 
     @swagger_auto_schema(
+        tags=['Asset Activities'],
         operation_description="Retrieve a list of all asset activities.",
         manual_parameters=[
             openapi.Parameter(
@@ -1139,6 +1161,7 @@ class AssetActivityListCreateView(generics.ListCreateAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Asset Activities'],
         operation_description="Create a new asset activity.",
         request_body=AssetActivityWriteSerializer,
         responses={
@@ -1191,6 +1214,7 @@ class AssetActivityDetailView(generics.RetrieveUpdateDestroyAPIView):
         return AssetActivityReadSerializer
 
     @swagger_auto_schema(
+        tags=['Asset Activities'],
         operation_description="Retrieve an asset activity by its primary key.",
         manual_parameters=[
             openapi.Parameter(
@@ -1256,6 +1280,7 @@ class MaintenanceScheduleListCreateView(generics.ListCreateAPIView):
         return MaintenanceScheduleReadSerializer
 
     @swagger_auto_schema(
+        tags=['Maintenance Schedules'],
         operation_description="Retrieve a list of maintenance schedules.",
         responses={
             200: MaintenanceScheduleReadSerializer(many=True),
@@ -1272,6 +1297,7 @@ class MaintenanceScheduleListCreateView(generics.ListCreateAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Maintenance Schedules'],
         operation_description="Create a new maintenance schedule.",
         request_body=MaintenanceScheduleWriteSerializer,
         responses={
@@ -1317,6 +1343,7 @@ class MaintenanceScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
         return MaintenanceScheduleReadSerializer
 
     @swagger_auto_schema(
+        tags=['Maintenance Schedules'],
         operation_description="Retrieve a maintenance schedule.",
         responses={
             200: MaintenanceScheduleReadSerializer,
@@ -1340,6 +1367,7 @@ class MaintenanceScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Maintenance Schedules'],
         operation_description="Update a maintenance schedule.",
         request_body=MaintenanceScheduleWriteSerializer,
         responses={
@@ -1366,6 +1394,7 @@ class MaintenanceScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Maintenance Schedules'],
         operation_description="Delete a maintenance schedule.",
         responses={
             204: openapi.Response(description="No content"),
@@ -1401,6 +1430,7 @@ class NotificationListView(generics.ListAPIView):
         return Notification.objects.filter(user=self.request.user).order_by('-created')
 
     @swagger_auto_schema(
+        tags=['Notifications'],
         operation_description="Retrieve a list of notifications for the authenticated user.",
         responses={
             200: NotificationSerializer(many=True),
@@ -1429,6 +1459,7 @@ class NotificationDetailView(generics.RetrieveUpdateAPIView):
         return Notification.objects.filter(user=self.request.user)
 
     @swagger_auto_schema(
+        tags=['Notifications'],
         operation_description="Retrieve a notification.",
         responses={
             200: NotificationSerializer,
@@ -1445,6 +1476,7 @@ class NotificationDetailView(generics.RetrieveUpdateAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Notifications'],
         operation_description="Partially update a notification (e.g., mark as read).",
         request_body=NotificationSerializer,
         responses={
@@ -1477,6 +1509,7 @@ class AuditLogView(APIView):
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
+        tags=['Audit Logs'],
         operation_summary="Retrieve all Django-Auditlog entries",
         operation_description="Returns a list of all audit log entries recorded by Django-Auditlog, ordered by most recent.",
         responses={

@@ -48,6 +48,7 @@ class CategoryListCreateView(generics.ListCreateAPIView):
         return CategoryReadSerializer
 
     @swagger_auto_schema(
+        tags=['Categories'],
         operation_description="Retrieve a list of categories.",
         responses={
             200: CategoryReadSerializer(many=True),
@@ -73,6 +74,7 @@ class CategoryListCreateView(generics.ListCreateAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Categories'],
         operation_description="Create a new category.",
         request_body=CategoryWriteSerializer,
         responses={
@@ -119,6 +121,7 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
             instance.save()
 
     @swagger_auto_schema(
+        tags=['Categories'],
         operation_description="Retrieve a category by ID or slug.",
         responses={
             200: CategoryReadSerializer(),
@@ -136,6 +139,7 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Categories'],
         operation_description="Update a category by ID or slug.",
         request_body=CategoryWriteSerializer,
         responses={
@@ -151,6 +155,7 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Categories'],
         operation_description="Partially update a category by ID or slug.",
         request_body=CategoryWriteSerializer(partial=True),
         responses={
@@ -166,6 +171,7 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().patch(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Categories'],
         operation_description="Delete a category by ID or slug.",
         responses={204: "Category deleted successfully.", 404: "Category not found."}
     )
@@ -203,6 +209,7 @@ class ItemListCreateView(generics.ListCreateAPIView):
         return ItemReadSerializer
 
     @swagger_auto_schema(
+        tags=['Inventory Items'],
         operation_description="Retrieve a list of items.",
         responses={
             200: ItemReadSerializer(many=True),
@@ -240,6 +247,7 @@ class ItemListCreateView(generics.ListCreateAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Inventory Items'],
         operation_description="Create a new item.",
         request_body=ItemWriteSerializer,
         responses={
@@ -281,6 +289,7 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
             instance.save()
 
     @swagger_auto_schema(
+        tags=['Inventory Items'],
         operation_description="Retrieve an item by ID.",
         responses={
             200: ItemReadSerializer(),
@@ -298,6 +307,7 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Inventory Items'],
         operation_description="Update an item by ID.",
         request_body=ItemWriteSerializer,
         responses={
@@ -313,6 +323,7 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Inventory Items'],
         operation_description="Partially update an item by ID.",
         request_body=ItemWriteSerializer(partial=True),
         responses={
@@ -328,6 +339,7 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().patch(request, *args, **kwargs)
 
     @swagger_auto_schema(
+        tags=['Inventory Items'],
         operation_description="Delete an item by ID.",
         responses={204: "Item deleted successfully.", 404: "Item not found."},
         manual_parameters=[
@@ -361,6 +373,7 @@ class CategoryItemsListView(generics.ListAPIView):
         return Item.objects.filter(category=category, is_removed=False)
 
     @swagger_auto_schema(
+        tags=['Inventory Items'],
         operation_description="List all items within a specific category by slug or ID.",
         manual_parameters=[
             openapi.Parameter('identifier', openapi.IN_PATH, description="ID or slug of the category", type=openapi.TYPE_STRING, required=True)
@@ -386,6 +399,7 @@ class AuditLogView(generics.ListAPIView):
     ordering = ['-timestamp']
 
     @swagger_auto_schema(
+        tags=['Audit Logs'],
         operation_summary="Retrieve all audit log entries for Items and Categories",
         operation_description="Returns a list of audit log entries recorded by Django-Auditlog for Item and Category models, ordered by most recent.",
         responses={
