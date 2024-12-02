@@ -1,4 +1,3 @@
-
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import get_user_model
@@ -17,7 +16,8 @@ User = get_user_model()
 
 class ConditionalValidationMixin:
     def save(self, *args, **kwargs):
-        if self.status != self.STATUS.draft:
+        # Skip validation if the object is being soft-deleted
+        if not self.is_removed and self.status != self.STATUS.draft:
             self.full_clean()
         super().save(*args, **kwargs)
 

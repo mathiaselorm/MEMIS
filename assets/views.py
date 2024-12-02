@@ -24,7 +24,11 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from accounts.permissions import IsAdminOrSuperAdmin
 from django.db.models import Q
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 
@@ -457,15 +461,17 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         if instance.is_removed:
-            # If user is Admin or SuperAdmin, permanently delete
+            # Permanently delete if admin or superadmin
             if IsAdminOrSuperAdmin().has_permission(self.request, self):
-                instance.delete()
+                Asset.all_objects.filter(pk=instance.pk).delete()
+                return "permanent_delete"
             else:
                 raise PermissionDenied("You do not have permission to permanently delete this asset.")
         else:
-            # Set is_removed to True (soft delete)
+            # Soft delete
             instance.is_removed = True
             instance.save()
+            return "soft_delete"
 
     @swagger_auto_schema(
         tags=['Assets'],
@@ -624,11 +630,20 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def delete(self, request, *args, **kwargs):
-        """
-        Delete an asset by its primary key.
-        """
-        return super().delete(request, *args, **kwargs)
-
+        instance = self.get_object()  # Retrieve the instance
+        deletion_status = self.perform_destroy(instance)  # Delegate logic to `perform_destroy`
+        
+        # Customize the response based on the deletion state
+        if deletion_status == "permanent_delete":
+            return Response(
+                {"detail": "Asset permanently deleted."},
+                status=status.HTTP_204_NO_CONTENT
+            )
+        elif deletion_status == "soft_delete":
+            return Response(
+                {"detail": "Asset soft-deleted successfully."},
+                status=status.HTTP_204_NO_CONTENT
+            )
 
 class TotalAssetsView(APIView):
     """
@@ -818,52 +833,52 @@ class TotalAssetsUnderMaintenanceView(APIView):
 #         return Response(serializer.data)
 
 
-# @swagger_auto_schema(
-#     method='post',
-#     operation_description="Restore a soft-deleted asset.",
-#     responses={
-#         200: openapi.Response(
-#             description="Asset restored successfully.",
-#             examples={
-#                 "application/json": {"detail": "Asset restored successfully."}
-#             }
-#         ),
-#         404: openapi.Response(
-#             description="Asset not found or not soft-deleted.",
-#             examples={
-#                 "application/json": {"detail": "Asset not found or not soft-deleted."}
-#             }
-#         ),
-#     },
-#     manual_parameters=[
-#         openapi.Parameter(
-#             'pk', openapi.IN_PATH,
-#             description="Primary key of the asset to restore",
-#             type=openapi.TYPE_INTEGER,
-#             required=True,
-#         )
-#     ]
-# )
-# @api_view(['POST'])
-# @permission_classes([IsAuthenticated])
-# def restore_asset(request, pk):
-#     """
-#     Restore a soft-deleted asset by its primary key.
+@swagger_auto_schema(
+    method='post',
+    operation_description="Restore a soft-deleted asset.",
+    responses={
+        200: openapi.Response(
+            description="Asset restored successfully.",
+            examples={
+                "application/json": {"detail": "Asset restored successfully."}
+            }
+        ),
+        404: openapi.Response(
+            description="Asset not found or not soft-deleted.",
+            examples={
+                "application/json": {"detail": "Asset not found or not soft-deleted."}
+            }
+        ),
+    },
+    manual_parameters=[
+        openapi.Parameter(
+            'pk', openapi.IN_PATH,
+            description="Primary key of the asset to restore",
+            type=openapi.TYPE_INTEGER,
+            required=True,
+        )
+    ]
+)
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def restore_asset(request, pk):
+    """
+    Restore a soft-deleted asset by its primary key.
 
-#     Parameters:
-#     - pk (int): Primary key of the asset to restore.
+    Parameters:
+    - pk (int): Primary key of the asset to restore.
 
-#     Returns:
-#     - 200 OK: Asset restored successfully.
-#     - 404 Not Found: Asset not found or not soft-deleted.
-#     """
-#     try:
-#         asset = Asset.all_objects.get(pk=pk, is_removed=True)
-#         asset.is_removed = False
-#         asset.save()
-#         return Response({'detail': 'Asset restored successfully.'}, status=status.HTTP_200_OK)
-#     except Asset.DoesNotExist:
-#         return Response({'detail': 'Asset not found or not soft-deleted.'}, status=status.HTTP_404_NOT_FOUND)
+    Returns:
+    - 200 OK: Asset restored successfully.
+    - 404 Not Found: Asset not found or not soft-deleted.
+    """
+    try:
+        asset = Asset.all_objects.get(pk=pk, is_removed=True)
+        asset.is_removed = False
+        asset.save()
+        return Response({'detail': 'Asset restored successfully.'}, status=status.HTTP_200_OK)
+    except Asset.DoesNotExist:
+        return Response({'detail': 'Asset not found or not soft-deleted.'}, status=status.HTTP_404_NOT_FOUND)
     
     
 # @swagger_auto_schema(

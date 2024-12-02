@@ -1,13 +1,15 @@
 from django.contrib.auth import get_user_model
-
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from auditlog.models import LogEntry
-
 from .models import Asset, Department, AssetActivity, Notification, MaintenanceSchedule
 
+
 User = get_user_model()
+
+
+
 
 # Department Write Serializer
 class DepartmentWriteSerializer(serializers.ModelSerializer):
@@ -81,8 +83,12 @@ class AssetWriteSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-        instance.save()
+        try:
+            instance.save()
+        except ValidationError as e:
+            raise serializers.ValidationError(e.message_dict)
         return instance
+
 
 
     def validate(self, data):
@@ -94,7 +100,7 @@ class AssetWriteSerializer(serializers.ModelSerializer):
 # Asset Read Serializer
 class AssetReadSerializer(serializers.ModelSerializer):
     department_name = serializers.SerializerMethodField()
-    added_by_name = serializers.CharField(read_only=True)
+    added_by_name = serializers.SerializerMethodField()
     status = serializers.CharField(read_only=True)
     is_removed = serializers.BooleanField(read_only=True)
     added_by = serializers.SerializerMethodField() 
