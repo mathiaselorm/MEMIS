@@ -67,7 +67,7 @@ class AssetWriteSerializer(serializers.ModelSerializer):
             'name', 'device_type', 'embossment_id', 'serial_number', 'operational_status',
             'department', 'quantity', 'manufacturer', 'model', 'description', 'image',
             'embossment_date', 'manufacturing_date', 'commission_date', 'decommission_date',
-            'status'
+            'status', 'added_by'
         ]
 
     def create(self, validated_data):
@@ -97,6 +97,8 @@ class AssetReadSerializer(serializers.ModelSerializer):
     added_by_name = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
     is_removed = serializers.BooleanField(read_only=True)
+    added_by = serializers.PrimaryKeyRelatedField(read_only=True)  # Add this line
+
 
     class Meta:
         model = Asset
@@ -104,7 +106,7 @@ class AssetReadSerializer(serializers.ModelSerializer):
             'id', 'name', 'device_type', 'embossment_id', 'serial_number', 'operational_status',
             'department_name', 'quantity', 'manufacturer', 'model', 'description', 'image',
             'embossment_date', 'manufacturing_date', 'commission_date', 'decommission_date',
-            'status', 'added_by_name', 'created', 'modified', 'is_removed'
+            'status', 'added_by', 'added_by_name', 'created', 'modified', 'is_removed'
         ]
 
     def get_department_name(self, obj):
