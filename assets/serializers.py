@@ -97,8 +97,8 @@ class AssetReadSerializer(serializers.ModelSerializer):
     added_by_name = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
     is_removed = serializers.BooleanField(read_only=True)
-    added_by = serializers.SerializerMethodField()  # Change to SerializerMethodField
-
+    added_by = serializers.SerializerMethodField() 
+    
 
     class Meta:
         model = Asset
@@ -111,6 +111,9 @@ class AssetReadSerializer(serializers.ModelSerializer):
 
     def get_department_name(self, obj):
         return obj.department.name if obj.department else None
+    
+    def get_added_by(self, obj):
+        return obj.added_by.get_full_name() if obj.added_by else "Unknown"
     
     def get_added_by_name(self, obj):
         return obj.added_by.get_full_name() if obj.added_by else "Unknown"
