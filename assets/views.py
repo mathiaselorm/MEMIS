@@ -350,14 +350,16 @@ class AssetList(generics.ListCreateAPIView):
         """
         Retrieve assets, optionally filtered by 'status' and 'is_removed' query parameters.
         """
-        queryset = Asset.objects.all()
+        queryset = Asset.all_objects.all()  # Includes soft-deleted assets
         status_param = self.request.query_params.get('status')
         is_removed_param = self.request.query_params.get('is_removed')
 
         if status_param:
             queryset = queryset.filter(status=status_param)
-        else:
-            queryset = queryset.filter(status='published')  # Default to published
+        if is_removed_param is not None:
+            # Convert is_removed_param to boolean
+            is_removed = is_removed_param.lower() == 'true'
+            queryset = queryset.filter(is_removed=is_removed)
         return queryset
 
     def get_serializer_class(self):
