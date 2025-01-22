@@ -1,8 +1,5 @@
-# admin.py
-
 from django.contrib import admin
-from .models import Asset, Department, AssetActivity, MaintenanceSchedule, Notification
-
+from .models import Asset, Department, AssetActivity, MaintenanceSchedule
 class DepartmentAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'head', 'status', 'contact_phone', 'contact_email', 'is_removed')
     search_fields = ('name',)
@@ -121,22 +118,9 @@ class MaintenanceScheduleAdmin(admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
 
-class NotificationAdmin(admin.ModelAdmin):
-    list_display = ('user', 'message', 'is_read', 'created', 'modified')
-    list_filter = ('is_read',)
-    search_fields = ('user__username', 'user__first_name', 'user__last_name', 'message')
-    readonly_fields = ('created', 'modified')
-    fieldsets = (
-        (None, {
-            'fields': ('user', 'message', 'link', 'is_read')
-        }),
-        ('Timestamps', {
-            'fields': ('created', 'modified')
-        }),
-    )
+
 
 admin.site.register(Department, DepartmentAdmin)
 admin.site.register(Asset, AssetAdmin)
 admin.site.register(AssetActivity, AssetActivityAdmin)
 admin.site.register(MaintenanceSchedule, MaintenanceScheduleAdmin)
-admin.site.register(Notification, NotificationAdmin)

@@ -27,7 +27,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 import os
 import environ
-#from decouple import config
 
 
 # Initialise environment variables
@@ -64,10 +63,16 @@ DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='memis@melarc.me')
 
 broker_connection_retry_on_startup = True
 
-# Celery configuration
-CELERY_BROKER_URL = env('REDISCLOUD_URL')  # Use REDISCLOUD_URL from the environment
-CELERY_RESULT_BACKEND = env('REDISCLOUD_URL')  # Set the result backend to the same Redis instance
+# # Celery configuration
+# CELERY_BROKER_URL = "redis://127.0.0.1:6380/0"
+# CELERY_RESULT_BACKEND = "redis://127.0.0.1:6380/0"
 
+# Heroku Redis in production
+CELERY_BROKER_URL = config('REDISCLOUD_URL')
+CELERY_RESULT_BACKEND = config('REDISCLOUD_URL')
+
+CELERY_TASK_ALWAYS_EAGER = True  # Run tasks synchronously
+CELERY_TASK_EAGER_PROPAGATES = True  # Raise errors immediately
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -84,6 +89,15 @@ CELERY_WORKER_TASK_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(task_name)s[%(tas
 CELERY_WORKER_REDIRECT_STDOUTS = True
 CELERY_WORKER_REDIRECT_STDOUTS_LEVEL = 'DEBUG'
 
+
+CELERY_BROKER_URL = env('REDISCLOUD_URL')
+CELERY_BEAT_SCHEDULE = {
+    # Example: runs every 60 seconds
+    'check-maintenance-schedules': {
+        'task': 'maintenance.tasks.check_maintenance_schedules',
+        'schedule': 60.0,
+    },
+}
 
 
 
@@ -111,6 +125,7 @@ DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -129,11 +144,13 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_yasg',
     'auditlog',
+    'channels',
     
     #installed apps
     'accounts',
     'assets',
-    'inventory'
+    'inventory',
+    'notification'
     
 ]
 
@@ -176,6 +193,18 @@ DJANGO_REST_PASSWORDRESET_TOKEN_CONFIG = {
         'lifetime': timedelta(hours=1)
     }
 }
+
+REDIS_URL = env('REDISCLOUD_URL')
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [REDIS_URL] 
+        },
+    },
+}
+
 
 
 # Cloudinary storage configuration using environment variables
@@ -222,6 +251,8 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core.wsgi.application'
+ASGI_APPLICATION = 'core.asgi.application'  # Required for Channels
+
 
 LOGGING = {
             'version': 1,

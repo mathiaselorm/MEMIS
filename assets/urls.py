@@ -24,12 +24,6 @@ urlpatterns = [
     
     path('asset-activities/', views.AssetActivityListCreateView.as_view(), name='asset-activity-list-create'),
     path('asset-activities/<int:pk>/', views.AssetActivityDetailView.as_view(), name='asset-activity-detail'),
-
-    # Tracking endpoints
-    # path('assets/department/<str:identifier>/', views.TrackingByDepartmentView.as_view(), name='assets-by-department'),
-    # path('assets/status/', views.TrackingByOperationalStatusView.as_view(), name='assets-by-operational-status'),
-    # path('assets/softdeleted/', views.SoftDeletedAssetsView.as_view(), name='soft-deleted-assets'),
-    # path('assets/<int:pk>/delete/', views.permanent_delete_asset, name='delete-softdeleted-assets'),
     
     # Audit log endpoint
     path('assets/audit-logs/', views.AuditLogView.as_view(), name='audit-log'),
@@ -37,8 +31,17 @@ urlpatterns = [
     # Maintenance schedule endpoints
     path('maintenance-schedules/', views.MaintenanceScheduleListCreateView.as_view(), name='maintenance-schedule-list-create'),
     path('maintenance-schedules/<int:pk>/', views.MaintenanceScheduleDetailView.as_view(), name='maintenance-schedule-detail'),
+    path('maintenance-schedules/<int:pk>/deactivate/', views.deactivate_schedule, name='schedule-deactivate'),
     
-    # Notification endpoints
-    path('notifications/', views.NotificationListView.as_view(), name='notification-list'),
-    path('notifications/<int:pk>/', views.NotificationDetailView.as_view(), name='notification-detail'),
 ]
+
+
+
+
+
+
+    # Tracking endpoints
+    # path('assets/department/<str:identifier>/', views.TrackingByDepartmentView.as_view(), name='assets-by-department'),
+    # path('assets/status/', views.TrackingByOperationalStatusView.as_view(), name='assets-by-operational-status'),
+    # path('assets/softdeleted/', views.SoftDeletedAssetsView.as_view(), name='soft-deleted-assets'),
+    # path('assets/<int:pk>/delete/', views.permanent_delete_asset, name='delete-softdeleted-assets'),

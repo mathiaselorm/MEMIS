@@ -2,6 +2,7 @@ from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import get_user_model
 from datetime import datetime, timedelta
+from django.utils import timezone
 from autoslug import AutoSlugField
 from model_utils.models import StatusModel, SoftDeletableModel, TimeStampedModel
 from model_utils import Choices
@@ -11,6 +12,7 @@ from cloudinary.models import CloudinaryField
 from django.db.models import Q, UniqueConstraint
 from django.core.exceptions import ValidationError
 from dateutil import rrule 
+from celery import current_app
 
 User = get_user_model()
 
@@ -23,7 +25,10 @@ class ConditionalValidationMixin:
 
 class Department(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStampedModel):
     name = models.CharField(max_length=255, unique=True)
-    slug = AutoSlugField(populate_from='name', unique=True, max_length=255)
+    slug = AutoSlugField(
+        populate_from='name', 
+        max_length=255,
+    )
     head = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,
@@ -41,6 +46,12 @@ class Department(ConditionalValidationMixin, StatusModel, SoftDeletableModel, Ti
                 fields=['name'],
                 condition=Q(status='published'),
                 name='unique_department_name_when_published'
+            ),
+            
+            UniqueConstraint(
+                fields=['slug'],
+                condition=Q(status='published'),
+                name='unique_department_slug_when_published'
             )
         ]
     
@@ -84,7 +95,7 @@ class Department(ConditionalValidationMixin, StatusModel, SoftDeletableModel, Ti
 
 class Asset(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStampedModel):
     name = models.CharField(max_length=255)
-    device_type = models.CharField(max_length=255, blank=True, null=True)
+    device_type = models.CharField(max_length=255, blank=True, null=True, db_index=True)
     embossment_id = models.CharField(max_length=100)
     department = models.ForeignKey(
         Department,
@@ -105,7 +116,7 @@ class Asset(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeSta
     quantity = models.IntegerField(default=1)
     model = models.CharField(max_length=100)
     manufacturer = models.CharField(max_length=100)
-    serial_number = models.CharField(max_length=100)
+    serial_number = models.CharField(max_length=100, unique=True)
     embossment_date = models.DateField()
     manufacturing_date = models.DateField()
     description = models.TextField(blank=True, null=True)
@@ -198,7 +209,7 @@ class AssetActivity(SoftDeletableModel, TimeStampedModel):
         max_length=20,
         choices=STATUS_CHOICES,
         null=True,
-        blank=True
+        blank=True 
     )
     post_status = models.CharField(
         max_length=20,
@@ -222,6 +233,13 @@ class AssetActivity(SoftDeletableModel, TimeStampedModel):
         technician_name = self.technician.get_full_name() if self.technician else 'Unknown'
         return f"{self.get_activity_type_display()} on {self.asset.name} by {technician_name}"
     
+    class Meta:
+        ordering = ['-date_time']
+        indexes = [
+            models.Index(fields=['asset', 'date_time']),
+        ]
+
+    
     
 
 class MaintenanceSchedule(TimeStampedModel):
@@ -241,22 +259,33 @@ class MaintenanceSchedule(TimeStampedModel):
         blank=True
     )
     is_general = models.BooleanField(default=False)  # True for general maintenance
-    technician = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='maintenance_schedules')
+    technician = models.ForeignKey(
+        User, on_delete=models.SET_NULL, 
+        null=True, 
+        related_name='maintenance_schedules'
+    )
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, null=True)
-    start_datetime = models.DateTimeField()
-    end_datetime = models.DateTimeField(null=True, blank=True)
-    frequency = models.CharField(max_length=10, choices=FREQUENCY_CHOICES, default='once')
+    start_datetime = models.DateTimeField(db_index=True)
+    end_datetime = models.DateTimeField(null=True, blank=True, db_index=True)
+    frequency = models.CharField(
+        max_length=10, 
+        choices=FREQUENCY_CHOICES, 
+        default='once'
+    )
     interval = models.PositiveIntegerField(default=1)  # Interval between recurrences
     until = models.DateTimeField(null=True, blank=True)  # End date for recurring events
     is_active = models.BooleanField(default=True)
     last_notification = models.DateTimeField(null=True, blank=True)
+    next_occurrence = models.DateTimeField(null=True, blank=True)
     
     class Meta:
         indexes = [
             models.Index(fields=['start_datetime']),
             models.Index(fields=['is_active']),
             models.Index(fields=['last_notification']),
+            models.Index(fields=['asset']),
+            models.Index(fields=['next_occurrence']),
         ]
     
     def clean(self):
@@ -275,13 +304,17 @@ class MaintenanceSchedule(TimeStampedModel):
         if self.asset:
             return f"{self.title} for {self.asset.name}"
         return f"{self.title}"
+    
+    
 
     def get_next_occurrences(self, count=1, lookahead_days=1):
         if not self.is_active:
             return []
         
+        now = timezone.now()
+        
         if self.frequency == 'once':
-            if self.start_datetime > datetime.now():
+            if self.start_datetime > now:
                 return [self.start_datetime]
             else:
                 return []
@@ -299,20 +332,70 @@ class MaintenanceSchedule(TimeStampedModel):
             interval=self.interval,
             until=self.until,
         )
-        now = datetime.now()
+        now = timezone.now()
         occurrences = rule.between(now, now + timedelta(days=lookahead_days), inc=True)
         return occurrences[:count]
 
 
+    def compute_next_occurrence(self):
+            """
+            A helper method to calculate the very next occurrence for this schedule.
+            Returns a datetime object or None if no future occurrence is found.
+            """
+            if not self.is_active:
+                return None
 
-class Notification(TimeStampedModel):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
-    message = models.TextField()
-    link = models.URLField(blank=True, null=True)  # Link to related details
-    is_read = models.BooleanField(default=False)
+            now = timezone.now()
 
-    def __str__(self):
-        return f"Notification for {self.user.username}"
+            # 'once' schedule
+            if self.frequency == 'once':
+                # If start_datetime is in the future, that's our one occurrence
+                return self.start_datetime if self.start_datetime > now else None
+
+            # For recurring events
+            freq_map = {
+                'daily': rrule.DAILY,
+                'weekly': rrule.WEEKLY,
+                'monthly': rrule.MONTHLY,
+                'yearly': rrule.YEARLY,
+            }
+            freq = freq_map.get(self.frequency)
+            rule = rrule.rrule(
+                freq,
+                dtstart=self.start_datetime,
+                interval=self.interval,
+                until=self.until,
+            )
+
+            # Find the next occurrence strictly after now
+            next_occurrences = rule.between(now, now + timedelta(days=365*5), inc=False)  # 5-year lookahead, arbitrary
+            return next_occurrences[0] if next_occurrences else None
+    
+    def cancel_old_tasks(self):
+        """
+        Cancels any scheduled Celery tasks for this MaintenanceSchedule.
+        """
+        if hasattr(self, 'id') and self.id:  # Ensure the schedule is saved
+            task_name = f"send_maintenance_reminder_{self.id}"
+            # Inspect Celery tasks and revoke matching ones
+            for task_id, task in current_app.control.inspect().scheduled().items():
+                for task_info in task:
+                    if task_name in task_info['request']['argsrepr']:
+                        current_app.control.revoke(task_id, terminate=True)
+                        
+
+    def save(self, *args, **kwargs):
+            """
+            Override save() to update self.next_occurrence right before saving.
+            """
+            # Compute and store the next occurrence
+            self.next_occurrence = self.compute_next_occurrence()
+            super().save(*args, **kwargs)
+            
+        
+        
+    
+    
 
 # Register models with auditlog
 auditlog.register(Asset)

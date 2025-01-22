@@ -82,8 +82,6 @@ class CustomUserAdmin(BaseUserAdmin):
         return obj.get_user_role_display()
     get_user_role_display.short_description = 'User Role'
 
-admin.site.register(CustomUser, CustomUserAdmin)
-
 class AuditLogAdmin(admin.ModelAdmin):
     list_display = ('timestamp', 'user_full_name', 'action', 'target_user_full_name', 'details')
     list_filter = ('action', 'timestamp')
@@ -106,5 +104,7 @@ class AuditLogAdmin(admin.ModelAdmin):
             return obj.target_user.get_full_name()
         return 'N/A'
     target_user_full_name.short_description = 'Target User'
+    
 
+admin.site.register(CustomUser, CustomUserAdmin)
 admin.site.register(AuditLog, AuditLogAdmin)

@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 
 from .models import (
     Asset, Department, AssetActivity,
-    MaintenanceSchedule, Notification
+    MaintenanceSchedule
     )
 from auditlog.models import LogEntry
 from .serializers import(
@@ -16,7 +16,7 @@ from .serializers import(
     AssetWriteSerializer, AssetReadSerializer,
      AssetActivityReadSerializer, AssetActivityWriteSerializer,
     AssetsLogEntrySerializer, MaintenanceScheduleWriteSerializer, 
-    MaintenanceScheduleReadSerializer, NotificationSerializer
+    MaintenanceScheduleReadSerializer
     )
 from .utils import get_object_by_id_or_slug
 from django.shortcuts import get_object_or_404
@@ -926,7 +926,7 @@ def restore_asset(request, pk):
 
 
 
-class AssetActivitiesByAssetView(generics.ListCreateAPIView):
+class  AssetActivitiesByAssetView(generics.ListCreateAPIView):
     """
     List all activities for a specific asset or create a new activity.
     """
@@ -936,7 +936,11 @@ class AssetActivitiesByAssetView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         asset_id = self.kwargs.get('asset_id')
-        queryset = AssetActivity.objects.filter(asset_id=asset_id)
+        queryset = (
+            AssetActivity.objects
+            .filter(asset_id=asset_id)
+            .select_related('asset', 'technician')
+        )
         
         # Filtering by technician and activity_type
         technician = self.request.query_params.get('technician')
@@ -1435,86 +1439,19 @@ class MaintenanceScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
         return super().delete(request, *args, **kwargs)
 
 
-
-class NotificationListView(generics.ListAPIView):
-    """
-    List all notifications for the authenticated user.
-    """
-    serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user).order_by('-created')
-
-    @swagger_auto_schema(
-        tags=['Notifications'],
-        operation_description="Retrieve a list of notifications for the authenticated user.",
-        responses={
-            200: NotificationSerializer(many=True),
-            401: openapi.Response(
-                description="Unauthorized",
-                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-            )
-        }
-    )
-    def get(self, request, *args, **kwargs):
-        """
-        List all notifications for the authenticated user.
-        """
-        return super().get(request, *args, **kwargs)
-
-
-class NotificationDetailView(generics.RetrieveUpdateAPIView):
-    """
-    Retrieve or update a notification (e.g., mark as read).
-    """
-    serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
-    lookup_field = 'pk'
-
-    def get_queryset(self):
-        return Notification.objects.filter(user=self.request.user)
-
-    @swagger_auto_schema(
-        tags=['Notifications'],
-        operation_description="Retrieve a notification.",
-        responses={
-            200: NotificationSerializer,
-            404: openapi.Response(
-                description="Not found",
-                examples={"application/json": {"detail": "Not found."}}
-            )
-        }
-    )
-    def get(self, request, *args, **kwargs):
-        """
-        Retrieve a notification.
-        """
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Notifications'],
-        operation_description="Partially update a notification (e.g., mark as read).",
-        request_body=NotificationSerializer,
-        responses={
-            200: NotificationSerializer,
-            400: openapi.Response(
-                description="Bad Request",
-                examples={"application/json": {"detail": "Invalid data."}}
-            ),
-            404: openapi.Response(
-                description="Not found",
-                examples={"application/json": {"detail": "Not found."}}
-            )
-        }
-    )
-    def patch(self, request, *args, **kwargs):
-        """
-        Partially update a notification.
-        """
-        return super().patch(request, *args, **kwargs)
-
-
+@swagger_auto_schema(
+    method='post',
+    operation_description="Deactivate a maintenance schedule by setting is_active=False.",
+    responses={200: "Schedule deactivated successfully."}
+)
+@api_view(['POST'])
+def deactivate_schedule(request, pk):
+    schedule = get_object_or_404(MaintenanceSchedule, pk=pk)
+    if schedule.technician != request.user:
+        return Response({'detail': 'Not allowed.'}, status=status.HTTP_403_FORBIDDEN)
+    schedule.is_active = False
+    schedule.save()
+    return Response({'detail': 'Schedule deactivated.'}, status=status.HTTP_200_OK)
 
 
 

@@ -13,7 +13,6 @@ from django_rest_passwordreset.signals import reset_password_token_created
 
 logger = logging.getLogger(__name__)
 
-# Retrieve the custom user model
 User = get_user_model()
 
 

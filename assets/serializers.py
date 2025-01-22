@@ -1,9 +1,11 @@
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.db import transaction
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from rest_framework.fields import DateField
 from auditlog.models import LogEntry
-from .models import Asset, Department, AssetActivity, Notification, MaintenanceSchedule
+from .models import Asset, Department, AssetActivity, MaintenanceSchedule
 
 
 User = get_user_model()
@@ -24,9 +26,7 @@ class DepartmentWriteSerializer(serializers.ModelSerializer):
         return Department.objects.create(**validated_data)
 
     def update(self, instance, validated_data):
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
+        instance = super().update(instance, validated_data)
         return instance
 
 # Department Read Serializer
@@ -78,24 +78,20 @@ class AssetWriteSerializer(serializers.ModelSerializer):
             validated_data['added_by'] = request.user
         else:
             raise ValidationError("User must be authenticated to add assets.")
+        
         return Asset.objects.create(**validated_data)
 
     def update(self, instance, validated_data):
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        try:
-            instance.save()
-        except ValidationError as e:
-            raise serializers.ValidationError(e.message_dict)
+        instance = super().update(instance, validated_data)
         return instance
-
-
 
     def validate(self, data):
         if data.get('commission_date') and data.get('decommission_date'):
             if data['commission_date'] > data['decommission_date']:
                 raise ValidationError("Commission date cannot be after decommission date.")
         return data
+
+
 
 # Asset Read Serializer
 class AssetReadSerializer(serializers.ModelSerializer):
@@ -104,6 +100,10 @@ class AssetReadSerializer(serializers.ModelSerializer):
     status = serializers.CharField(read_only=True)
     is_removed = serializers.BooleanField(read_only=True)
     added_by = serializers.SerializerMethodField() 
+    embossment_date = DateField()
+    manufacturing_date = DateField()
+    commission_date = DateField()
+    decommission_date = DateField(allow_null=True)
     
 
     class Meta:
@@ -146,20 +146,36 @@ class AssetActivityWriteSerializer(serializers.ModelSerializer):
         if value > timezone.now():
             raise serializers.ValidationError("The date and time cannot be in the future.")
         return value
-
     
+    def __init__(self, *args, **kwargs):
+        super(AssetActivityWriteSerializer, self).__init__(*args, **kwargs)
+        request = self.context.get('request')
+        if request and request.method == 'POST':
+            asset_id = self.context['view'].kwargs.get('asset_id')
+            if asset_id:  # If asset_id is present in the URL, remove the asset field as it's not needed.
+                self.fields.pop('asset', None)
+            else:
+                self.fields['asset'].required = True  # Ensure the field is required if not provided in the URL.
+
+    def validate_asset(self, value):
+        if not self.instance and not self.initial_data.get('asset') and not self.context['view'].kwargs.get('asset_id'):
+            raise ValidationError("This field is required.")
+        return value
+
+    @transaction.atomic
     def create(self, validated_data):
         activity = super().create(validated_data)
-        # Optionally update the asset's operational status based on post_status
-        if activity.post_status:
+        # Update the asset's operational status based on post_status if it differs
+        if activity.post_status and activity.asset.operational_status != activity.post_status:
             activity.asset.operational_status = activity.post_status
             activity.asset.save()
         return activity
 
+    @transaction.atomic
     def update(self, instance, validated_data):
         activity = super().update(instance, validated_data)
-        # Optionally update the asset's operational status based on post_status
-        if activity.post_status:
+        # Update the asset's operational status based on post_status if it differs
+        if activity.post_status and activity.asset.operational_status != activity.post_status:
             activity.asset.operational_status = activity.post_status
             activity.asset.save()
         return activity
@@ -190,9 +206,9 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         model = MaintenanceSchedule
         fields = [
             'id', 'asset', 'is_general', 'technician', 'title', 'description', 'start_datetime',
-            'end_datetime', 'frequency', 'interval', 'until', 'is_active'
+            'end_datetime', 'frequency', 'interval', 'until', 'is_active', 'next_occurrence'
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'next_occurrence']
         
 
     def validate(self, data):
@@ -200,16 +216,20 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         Validate that end_datetime is after start_datetime, recurring events have an 'until' date,
         and 'asset' field is handled correctly based on 'is_general'.
         """
+        # Check if end_datetime is after start_datetime
         start_datetime = data.get('start_datetime')
         end_datetime = data.get('end_datetime')
         if start_datetime and end_datetime:
             if end_datetime <= start_datetime:
                 raise serializers.ValidationError("End datetime must be after start datetime.")
+            
+        # Check that recurring schedules have an 'until' date
         frequency = data.get('frequency', 'once')
         until = data.get('until')
         if frequency != 'once' and not until:
             raise serializers.ValidationError("Recurring schedules must have an 'until' date.")
 
+        # Validate general vs specific schedules
         is_general = data.get('is_general', False)
         asset = data.get('asset')
         if is_general and asset is not None:
@@ -217,7 +237,44 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         if not is_general and asset is None:
             raise serializers.ValidationError("Asset is required for non-general maintenance schedules.")
         return data
+    
+    # Check for overlapping schedules
+        overlapping_schedules = MaintenanceSchedule.objects.filter(
+            is_general=is_general,
+            technician=technician,
+            start_datetime__lt=end_datetime,
+            end_datetime__gt=start_datetime
+        )
+        if not is_general:
+            overlapping_schedules = overlapping_schedules.filter(asset=asset)
+        
+        if self.instance:
+            overlapping_schedules = overlapping_schedules.exclude(id=self.instance.id)
 
+        if overlapping_schedules.exists():
+            raise serializers.ValidationError(
+                "This schedule overlaps with another existing schedule for the same asset or technician."
+            )
+
+        return data
+    
+    def create(self, validated_data):
+        """
+        Create a new maintenance schedule with proper defaults.
+        """
+        if validated_data.get('frequency') == 'once':
+            validated_data['interval'] = None
+            validated_data['until'] = None
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """
+        Update an existing maintenance schedule with proper defaults.
+        """
+        if validated_data.get('frequency') == 'once':
+            validated_data['interval'] = None
+            validated_data['until'] = None
+        return super().update(instance, validated_data)
     
 
 class MaintenanceScheduleReadSerializer(serializers.ModelSerializer):
@@ -231,7 +288,7 @@ class MaintenanceScheduleReadSerializer(serializers.ModelSerializer):
         model = MaintenanceSchedule
         fields = [
             'id', 'asset', 'asset_name', 'is_general', 'technician', 'technician_name', 'title', 'description',
-            'start_datetime', 'end_datetime', 'frequency', 'interval', 'until', 'is_active'
+            'start_datetime', 'end_datetime', 'frequency', 'interval', 'until', 'is_active', 'next_occurrence',
         ]
 
     def get_asset_name(self, obj):
@@ -254,14 +311,6 @@ class MaintenanceScheduleReadSerializer(serializers.ModelSerializer):
         else:
             return None
 
-
-              
-
-class NotificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Notification
-        fields = ['id', 'message', 'link', 'is_read', 'created', 'modified', 'user']
-        read_only_fields = ['id', 'created', 'user']
 
 
 

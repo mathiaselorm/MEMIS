@@ -30,7 +30,8 @@ def password_reset_token_created_handler(sender, reset_password_token, *args, **
         else:
             email_template = 'accounts/password_reset_email.html'
             subject = _('Password Reset Request')
-
+            
+        # current_site = Site.objects.get_current()
         # Build the reset URL
         frontend_url = settings.FRONTEND_URL
         reset_url = f"{frontend_url}/reset-password?token={reset_password_token.key}"
