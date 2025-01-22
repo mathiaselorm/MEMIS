@@ -8,6 +8,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import AuditLog
 from django_rest_passwordreset.models import ResetPasswordToken
 from django_rest_passwordreset.signals import reset_password_token_created
+from datetime import timedelta
 
 
 
@@ -185,16 +186,50 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
+    remember_me = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+
+        # Get the 'remember_me' field from the request data
+        request = self.context.get('request')
+        remember_me = request.data.get('remember_me', False) if request else False
+
+        # Get user object
+        user = self.user
+
+        # Generate tokens
+        refresh = self.get_token(user)
+        access_token = refresh.access_token
+
         # Add custom claims
-        token['first_name'] = user.first_name
-        token['last_name'] = user.last_name
-        token['email'] = user.email
-        token['user_role'] = user.get_user_role_display()  # Include role display
+        refresh['remember_me'] = remember_me  # Store "Remember Me" flag in the refresh token
+
+        # If "remember me" is set, extend the expiration times
+        if remember_me:
+            refresh.set_exp(lifetime=timedelta(days=5))  # Extended refresh token lifetime
+
+        # Add custom claims to both access and refresh tokens
+        if hasattr(self, '_add_custom_claims'):
+            self._add_custom_claims(refresh, user)
+            self._add_custom_claims(access_token, user)
+
+        # Add access and refresh tokens to the response
+        data.update({
+            'access': str(access_token),
+            'refresh': str(refresh),
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'user_role': user.get_user_role_display()
+            }
+        })
         
-        return token
+
+        return data
+
     
 
 class PasswordChangeSerializer(serializers.Serializer):
