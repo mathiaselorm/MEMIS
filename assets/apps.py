@@ -6,4 +6,4 @@ class AssetsConfig(AppConfig):
     name = 'assets'
 
     def ready(self):
-        import accounts.signals
+        import assets.signals

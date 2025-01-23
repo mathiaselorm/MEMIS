@@ -17,4 +17,4 @@ class Notification(TimeStampedModel):
     is_read = models.BooleanField(default=False, db_index=True)
 
     def __str__(self):
-        return f"Notification for {self.user.username}"
+        return f"Notification for {self.user.first_name}"

@@ -210,35 +210,36 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'next_occurrence']
         
-
     def validate(self, data):
         """
         Validate that end_datetime is after start_datetime, recurring events have an 'until' date,
         and 'asset' field is handled correctly based on 'is_general'.
         """
         # Check if end_datetime is after start_datetime
-        start_datetime = data.get('start_datetime')
-        end_datetime = data.get('end_datetime')
-        if start_datetime and end_datetime:
-            if end_datetime <= start_datetime:
-                raise serializers.ValidationError("End datetime must be after start datetime.")
-            
+        start_datetime = data['start_datetime']
+        end_datetime = data['end_datetime']
+        if end_datetime <= start_datetime:
+            raise serializers.ValidationError("End datetime must be after start datetime.")
+        
         # Check that recurring schedules have an 'until' date
-        frequency = data.get('frequency', 'once')
-        until = data.get('until')
-        if frequency != 'once' and not until:
+        frequency = data['frequency']
+        if frequency != 'once' and not data.get('until'):
             raise serializers.ValidationError("Recurring schedules must have an 'until' date.")
 
         # Validate general vs specific schedules
-        is_general = data.get('is_general', False)
+        is_general = data['is_general']
         asset = data.get('asset')
         if is_general and asset is not None:
-            raise serializers.ValidationError("General maintenance schedules should not be associated with a specific asset.")
+            raise serializers.ValidationError(
+                "General maintenance schedules should not be associated with a specific asset."
+            )
         if not is_general and asset is None:
-            raise serializers.ValidationError("Asset is required for non-general maintenance schedules.")
-        return data
-    
-    # Check for overlapping schedules
+            raise serializers.ValidationError(
+                "Asset is required for non-general maintenance schedules."
+            )
+        
+        # Check for overlapping schedules
+        technician = data['technician']
         overlapping_schedules = MaintenanceSchedule.objects.filter(
             is_general=is_general,
             technician=technician,
@@ -248,12 +249,14 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         if not is_general:
             overlapping_schedules = overlapping_schedules.filter(asset=asset)
         
+        # Exclude the current instance if updating
         if self.instance:
             overlapping_schedules = overlapping_schedules.exclude(id=self.instance.id)
 
         if overlapping_schedules.exists():
             raise serializers.ValidationError(
-                "This schedule overlaps with another existing schedule for the same asset or technician."
+                "This schedule overlaps with another existing schedule. "
+                "Please check for conflicts with the same technician or asset."
             )
 
         return data
@@ -262,7 +265,7 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         """
         Create a new maintenance schedule with proper defaults.
         """
-        if validated_data.get('frequency') == 'once':
+        if validated_data['frequency'] == 'once':
             validated_data['interval'] = None
             validated_data['until'] = None
         return super().create(validated_data)
@@ -271,10 +274,11 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         """
         Update an existing maintenance schedule with proper defaults.
         """
-        if validated_data.get('frequency') == 'once':
+        if validated_data['frequency'] == 'once':
             validated_data['interval'] = None
             validated_data['until'] = None
         return super().update(instance, validated_data)
+
     
 
 class MaintenanceScheduleReadSerializer(serializers.ModelSerializer):

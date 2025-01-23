@@ -44,6 +44,7 @@ def send_maintenance_notification(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=MaintenanceSchedule)
 def schedule_reminder_task(sender, instance, created, **kwargs):
+    logger.info(f"Signal triggered for MaintenanceSchedule: ID={instance.id}, Title={instance.title}, Created={created}")
     """
     Dynamically schedule reminder task when a maintenance schedule is created or updated.
     """
@@ -57,9 +58,12 @@ def schedule_reminder_task(sender, instance, created, **kwargs):
 
     # Schedule the reminder task 24 hours before the next occurrence
     reminder_time = next_occurrence - timedelta(hours=24)
+    logger.info(f"Scheduling task for {next_occurrence}, reminder time: {reminder_time}")
 
     # Use apply_async to schedule the task dynamically
     send_maintenance_reminder.apply_async(
         args=[instance.id, next_occurrence],  # Pass schedule id and occurrence time
         eta=reminder_time  # Set the ETA for 24 hours before the occurrence
     )
+    
+    logger.info("Task scheduled successfully.")

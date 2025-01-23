@@ -12,7 +12,6 @@ from cloudinary.models import CloudinaryField
 from django.db.models import Q, UniqueConstraint
 from django.core.exceptions import ValidationError
 from dateutil import rrule 
-from celery import current_app
 
 User = get_user_model()
 
@@ -289,14 +288,24 @@ class MaintenanceSchedule(TimeStampedModel):
         ]
     
     def clean(self):
-        if self.end_datetime and self.end_datetime <= self.start_datetime:
-            raise ValidationError("End time must be after the start time.")
-        if self.until and self.until < self.start_datetime:
-            raise ValidationError("Recurring end date ('until') must be on or after the start time.")
+        if self.start_datetime and self.end_datetime:
+            if self.end_datetime <= self.start_datetime:
+                raise ValidationError("End datetime must be after start datetime.")
+        elif not self.start_datetime:
+            raise ValidationError("Start datetime is required.")
+        elif not self.end_datetime:
+            raise ValidationError("End datetime is required.")
+        
+        if self.until and self.start_datetime:
+            if self.until < self.start_datetime:
+                raise ValidationError("Recurring end date ('until') must be on or after the start time.")
+        
         if self.is_general and self.asset is not None:
             raise ValidationError("A general reminder cannot be linked to a specific asset.")
+        
         if not self.is_general and self.asset is None:
             raise ValidationError("A specific reminder must be linked to an asset.")
+
 
     def __str__(self):
         if self.is_general:
@@ -370,19 +379,6 @@ class MaintenanceSchedule(TimeStampedModel):
             # Find the next occurrence strictly after now
             next_occurrences = rule.between(now, now + timedelta(days=365*5), inc=False)  # 5-year lookahead, arbitrary
             return next_occurrences[0] if next_occurrences else None
-    
-    def cancel_old_tasks(self):
-        """
-        Cancels any scheduled Celery tasks for this MaintenanceSchedule.
-        """
-        if hasattr(self, 'id') and self.id:  # Ensure the schedule is saved
-            task_name = f"send_maintenance_reminder_{self.id}"
-            # Inspect Celery tasks and revoke matching ones
-            for task_id, task in current_app.control.inspect().scheduled().items():
-                for task_info in task:
-                    if task_name in task_info['request']['argsrepr']:
-                        current_app.control.revoke(task_id, terminate=True)
-                        
 
     def save(self, *args, **kwargs):
             """
