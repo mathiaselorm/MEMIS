@@ -322,6 +322,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             )
 
             user_data = response.data.get('user', {})
+            # Return a simplified JSON response
             response.data = {
                 "message": "Tokens set in cookies. CSRF token provided.",
                 "user": user_data  # Just use the data from the serializer
@@ -384,115 +385,88 @@ class CustomTokenRefreshView(APIView):
         tags=['Authentication'],
     )
     def post(self, request, *args, **kwargs):
-        # Get the refresh token from the cookies
-        secure_cookie = not settings.DEBUG  # Set secure=True in production
+        secure_cookie = not settings.DEBUG
         refresh_token = request.COOKIES.get('refresh_token')
-         
-
         if not refresh_token:
-            return Response(
-                {"error": "Refresh token not found"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Refresh token not found"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Validate the refresh token
             old_refresh = RefreshToken(refresh_token)
-            
             user_id = old_refresh.payload.get('user_id')
             if not user_id:
-                return Response(
-                    {"error": "Invalid refresh token claims."}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-                
+                return Response({"error": "Invalid refresh token claims."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Validate user existence
             try:
                 user = User.objects.get(id=user_id)
             except User.DoesNotExist:
-                return Response(
-                    {"error": "User does not exist."}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response({"error": "User does not exist."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Extract custom claims from refresh token payload, excluding standard claims
+            # Extract custom claims
             custom_claims = {
-                key: value 
-                for key, value in old_refresh.payload.items() 
-                if key not in ['token_type', 'exp', 'iat', 'jti']
-                }
-
-            # Check if the refresh token has a "remember_me" flag
+                k: v for k, v in old_refresh.payload.items()
+                if k not in ['token_type', 'exp', 'iat', 'jti']
+            }
             remember_me = custom_claims.get('remember_me', False)
-            
+
+            # Generate new access token
             access_token_lifetime = timedelta(minutes=15)
-
-            # Generate a new access token
             new_access_token = old_refresh.access_token
-            new_access_token.set_exp(lifetime=access_token_lifetime) # Set the new access token lifetime
+            new_access_token.set_exp(lifetime=access_token_lifetime)
+            for k, v in custom_claims.items():
+                new_access_token[k] = v
 
-            # Add custom claims to the new access token
-            for key, value in custom_claims.items():
-                new_access_token[key] = value
-                
-
-            # Handle refresh token rotation if enabled
+            # Rotate refresh token if enabled
             if api_settings.ROTATE_REFRESH_TOKENS:
-                # Generate a new refresh token
                 new_refresh_token = RefreshToken.for_user(user)
-                
                 refresh_token_lifetime = timedelta(days=5) if remember_me else timedelta(days=1)
-                
-                if remember_me:
-                    new_refresh_token.set_exp(lifetime=refresh_token_lifetime)
-                    
-                # Add custom claims to the new refresh token
-                for key, value in custom_claims.items():
-                    new_refresh_token[key] = value
+                new_refresh_token.set_exp(lifetime=refresh_token_lifetime)
+                for k, v in custom_claims.items():
+                    new_refresh_token[k] = v
 
-                # Set the new refresh token in HttpOnly cookie
+                # Blacklist the old refresh token
+                old_refresh.blacklist()
+
+                # Return the new refresh token in a cookie
                 response = Response(
-                    {"message": "New access token and refresh token set in HttpOnly cookie."}, 
+                    {"message": "New access token and refresh token set in HttpOnly cookie."},
                     status=status.HTTP_200_OK
-                    )
-                
+                )
                 response.set_cookie(
                     key='refresh_token',
-                    value=str(new_refresh_token),  # Use the new refresh token
+                    value=str(new_refresh_token),
                     httponly=True,
-                    secure=secure_cookie,  # Set secure=True in production
-                    samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-                    max_age=refresh_token_lifetime.total_seconds(), 
+                    secure=secure_cookie,
+                    samesite='Lax' if settings.DEBUG else 'None',
+                    max_age=refresh_token_lifetime.total_seconds(),
                 )
-
-                # Blacklist the old refresh token after the new one is securely sent
-                old_refresh.blacklist()
             else:
                 response = Response(
-                    {"message": "New access token set in HttpOnly cookie."}, 
+                    {"message": "New access token set in HttpOnly cookie."},
                     status=status.HTTP_200_OK
                 )
 
-            # Set the new access token in HttpOnly cookie
+            # Set new access token in cookie
             response.set_cookie(
                 key='access_token',
                 value=str(new_access_token),
                 httponly=True,
-                secure=secure_cookie,  # Set secure=True in production
-                samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-                max_age=access_token_lifetime.total_seconds(),  # Set cookie expiration to match access token
+                secure=secure_cookie,
+                samesite='Lax' if settings.DEBUG else 'None',
+                max_age=access_token_lifetime.total_seconds(),
             )
 
-            # Generate and set a new CSRF token
+            # Set new CSRF token
             csrf_token = get_token(request)
             response.set_cookie(
                 key='csrftoken',
                 value=csrf_token,
-                httponly=False,  # Needs to be readable by the frontend
-                secure=secure_cookie,  # Set secure=True in production
-                samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-                max_age=access_token_lifetime.total_seconds(),   # Set cookie expiration to match access token
+                httponly=False,
+                secure=secure_cookie,
+                samesite='Lax' if settings.DEBUG else 'None',
+                max_age=access_token_lifetime.total_seconds(),
             )
-
+            
             # #Return the new access token for debugging in development
             # if settings.DEBUG:
             #     response.data['access_token'] = str(new_access_token)
@@ -501,7 +475,9 @@ class CustomTokenRefreshView(APIView):
             return response
 
         except Exception as e:
+            logger.error(f"Token refresh error: {e}")
             return Response({"error": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
+    
     
     
 # class PasswordResetRequestThrottle(AnonRateThrottle):
@@ -787,14 +763,14 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     method='post',
     operation_summary="Log Out User",
     operation_description="""
-    Logs out the user by blacklisting the refresh token.
+    Logs out the user by blacklisting the refresh token (if in use) and clearing relevant cookies.
     """,
     request_body=openapi.Schema(
         type=openapi.TYPE_OBJECT,
         properties={
-            'refresh': openapi.Schema(type=openapi.TYPE_STRING, description="Refresh token"),
+            'refresh': openapi.Schema(type=openapi.TYPE_STRING, description="Refresh token (optional)"),
         },
-        required=['refresh']
+        required=[]
     ),
     responses={
         200: openapi.Response(
@@ -806,10 +782,10 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
             }
         ),
         400: openapi.Response(
-            description="Bad Request - No refresh token provided or invalid token.",
+            description="Bad Request - No refresh token found or invalid token.",
             examples={
                 "application/json": {
-                    "error": "No refresh token provided"
+                    "error": "Refresh token not found"
                 }
             }
         ),
@@ -817,21 +793,20 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
     tags=["Authentication"]
 )
 @api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
 def logout_view(request):
     """
-    View to log out the user by blacklisting the refresh token.
+    Logs out the user by blacklisting the refresh token if present,
+    then deletes the access, refresh, and CSRF cookies.
     """
-    refresh = request.data.get('refresh')
-    if not refresh:
-        return Response({"error": "No refresh token provided"}, status=status.HTTP_400_BAD_REQUEST)
+    refresh_token = request.COOKIES.get('refresh_token')
+    if not refresh_token:
+        return Response({"error": "Refresh token not found in cookies"}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        # Blacklist the refresh token
-        token = RefreshToken(refresh)
-        token.blacklist()
-
-        # Log the logout action
+        token = RefreshToken(refresh_token)
+        token.blacklist()  # Blacklist the refresh token
+        
+        # Log the user logout
         AuditLog.objects.create(
             user=request.user,
             action=AuditLog.ActionChoices.LOGOUT,
@@ -839,13 +814,18 @@ def logout_view(request):
             details=_('User logged out.')
         )
         logger.info(f"User {request.user.get_full_name()} logged out.")
-
-        return Response({"message": "Logged out successfully"}, status=status.HTTP_200_OK)
-
+        
     except Exception as e:
-        user_full_name = request.user.get_full_name() if request.user.is_authenticated else 'Anonymous'
-        logger.error(f"Error during logout for user {user_full_name}: {e}")
+        # Typically occurs if the token is invalid or already blacklisted
+        logger.error(f"Error during logout for user {request.user.email}: {e}")
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    response = Response({"message": "Logged out successfully"}, status=status.HTTP_200_OK)
+    # Clear cookies
+    response.delete_cookie('refresh_token')
+    response.delete_cookie('access_token')
+    response.delete_cookie('csrftoken')
+    return response
     
 
 class UserListView(ListAPIView):
