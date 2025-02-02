@@ -226,7 +226,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'email': user.email,
                 'first_name': user.first_name,
                 'last_name': user.last_name,
-                'role': user.get_user_role_display()
+                'user_role': user.get_user_role_display()
             }
         })
         return data
