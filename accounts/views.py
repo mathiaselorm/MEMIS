@@ -807,17 +807,23 @@ def logout_view(request):
         token.blacklist()  # Blacklist the refresh token
         
         # Log the user logout
-        AuditLog.objects.create(
-            user=request.user,
-            action=AuditLog.ActionChoices.LOGOUT,
-            target_user=request.user,
-            details=_('User logged out.')
-        )
-        logger.info(f"User {request.user.get_full_name()} logged out.")
+        if request.user.is_authenticated:
+            AuditLog.objects.create(
+                user=request.user,
+                action=AuditLog.ActionChoices.LOGOUT,
+                target_user=request.user,
+                details=_('User logged out.')
+            )
+            logger.info(f"User {request.user.get_full_name()} logged out.")
+        else:
+            logger.info("Anonymous user attempted to log out.")
+
         
     except Exception as e:
         # Typically occurs if the token is invalid or already blacklisted
-        logger.error(f"Error during logout for user {request.user.email}: {e}")
+        user_email = getattr(request.user, 'email', 'anonymous')
+        logger.error(f"Error during logout for user {user_email}: {e}")
+
         return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     response = Response({"message": "Logged out successfully"}, status=status.HTTP_200_OK)
