@@ -7,3 +7,8 @@ class AssetsConfig(AppConfig):
 
     def ready(self):
         import assets.signals
+        from actstream import registry
+
+        
+        from .models import Asset
+        registry.register(Asset)

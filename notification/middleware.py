@@ -1,3 +1,4 @@
+import logging
 import jwt
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
@@ -10,6 +11,8 @@ from channels.middleware import BaseMiddleware
 from channels.auth import AuthMiddlewareStack
 from django.contrib.auth import get_user_model
 
+logger = logging.getLogger(__name__)  # ❶ Create logger
+
 User = get_user_model()
 
 @database_sync_to_async
@@ -20,16 +23,19 @@ def get_user_from_token(token):
     try:
         UntypedToken(token)  # This will raise an error if the token is invalid
     except (InvalidToken, TokenError, jwt.DecodeError):
+        logger.warning(f"JWT token is invalid {token}")  # ❷ Log bad token
         return None
 
     # Decode does not do the same checks as UntypedToken, but we can still get user_id:
     decoded_data = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
     user_id = decoded_data.get("user_id")
     if not user_id:
+        logger.debug("No user_id found")  # ❸ Additional log
         return None
 
     try:
-        return User.objects.get(id=user_id)
+        user = User.objects.get(id=user_id)
+        return user
     except User.DoesNotExist:
         return None
 
@@ -50,10 +56,13 @@ class JWTAuthMiddleware(BaseMiddleware):
         if token:
             user = await get_user_from_token(token)
             if user:
+                logger.debug(f"Setting user {user.email} in scope for Channels")  # ❻
                 scope['user'] = user
             else:
+                logger.debug("No valid user found from token, using AnonymousUser")
                 scope['user'] = AnonymousUser()
         else:
+            logger.debug("No token provided; using AnonymousUser")
             scope['user'] = AnonymousUser()
 
         return await super().__call__(scope, receive, send)

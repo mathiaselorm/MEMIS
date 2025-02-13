@@ -16,16 +16,15 @@ from django.core.exceptions import ValidationError
 from django.conf import settings
 from datetime import timedelta
 from django.middleware.csrf import get_token
+from actstream import action
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 
 from django_rest_passwordreset.views import ResetPasswordRequestToken
 
-from .models import AuditLog
 from .permissions import IsAdminOrSuperAdmin
 from .serializers import (
-    AuditLogSerializer,
     CustomTokenObtainPairSerializer,
     PasswordChangeSerializer,
     RoleAssignmentSerializer,
@@ -99,17 +98,13 @@ class UserRegistrationView(generics.CreateAPIView):
         # Get the user's full name 
         full_name = user.get_full_name()
 
-        # Log the user creation with full name
-        AuditLog.objects.create(
-            user=self.request.user,
-            action=AuditLog.ActionChoices.CREATE,
-            target_user=user,
-            details=_('User created: %(full_name)s') % {
-                'full_name': full_name,
-            }
+        # Record the creation in the activity stream
+        action.send(
+            self.request.user,
+            verb='created user',
+            target=user,
+            description=f"User created: {full_name}"
         )
-        logger.info(f"User {self.request.user.get_full_name()} created user with full name {full_name}.")
-
     def create(self, request, *args, **kwargs):
         # Override the create method to customize the response
         response = super().create(request, *args, **kwargs)
@@ -174,19 +169,6 @@ class RoleAssignmentView(generics.UpdateAPIView):
         if response.status_code == status.HTTP_200_OK:
             user = self.get_object()
             
-            full_name = user.get_full_name()
-            
-            # Log the role assignment
-            AuditLog.objects.create(
-                user=self.request.user,
-                action=AuditLog.ActionChoices.ASSIGN_ROLE,
-                target_user=user,
-                details=_('Role changed to %(new_role)s for user %(full_name)s.') % {
-                    'new_role': user.get_user_role_display(),
-                    'full_name': full_name,
-                }
-            )
-            logger.info(f"User {self.request.user.get_full_name()} changed role for user {full_name} to {user.get_user_role_display()}.")
         return response
 
 
@@ -545,15 +527,12 @@ class PasswordChangeView(generics.UpdateAPIView):
             # Send password change email notification
             send_password_change_email(user.id)
 
-            # Log the password change
-            AuditLog.objects.create(
-                user=user,
-                action=AuditLog.ActionChoices.UPDATE,
-                target_user=user,
-                details=_('User changed password.')
+            # Record the password change in the activity stream 
+            action.send(
+                user,
+                verb='changed password'
             )
-            logger.info(f"User {user.get_full_name()} changed their password.")
-
+            
             return Response({"detail": _("Your password has been changed successfully.")}, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -598,14 +577,14 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        # Log and audit the update
-        AuditLog.objects.create(
-            user=self.request.user,
-            action=AuditLog.ActionChoices.UPDATE,
-            target_user=user,
-            details=_('User details updated.')
+        # Log and Record the update in the activity stream
+        action.send(
+            request.user,
+            verb='updated user',
+            target=user,
+            description="User details updated."
         )
-        logger.info(f"User {self.request.user.get_full_name()} updated details for user {user.get_full_name()}.")
+        logger.info(f"User {request.user.get_full_name()} updated details for {user.get_full_name()}.")
 
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -615,14 +594,15 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         """
         user = self.get_object()
 
-        # Log and audit before deletion
-        AuditLog.objects.create(
-            user=request.user,
-            action=AuditLog.ActionChoices.DELETE,
-            target_user=user,
-            details=_("User account deleted.")
+        # Record the user deletion in the activity stream
+        action.send(
+            request.user,
+            verb='deleted user',
+            target=user,
+            description="User account deleted."
         )
         logger.info(f"User {request.user.get_full_name()} deleted user {user.get_full_name()}.")
+
 
         # Perform deletion by calling the superclass method
         return super().destroy(request, *args, **kwargs)
@@ -806,18 +786,15 @@ def logout_view(request):
         token = RefreshToken(refresh_token)
         token.blacklist()  # Blacklist the refresh token
         
-        # Log the user logout
+        # Record logout in the activity stream
         if request.user.is_authenticated:
-            AuditLog.objects.create(
-                user=request.user,
-                action=AuditLog.ActionChoices.LOGOUT,
-                target_user=request.user,
-                details=_('User logged out.')
+            action.send(
+                request.user,
+                verb='logged out'
             )
             logger.info(f"User {request.user.get_full_name()} logged out.")
         else:
             logger.info("Anonymous user attempted to log out.")
-
         
     except Exception as e:
         # Typically occurs if the token is invalid or already blacklisted
@@ -944,15 +921,3 @@ def total_users_view(request):
     logger.info(f"User {request.user.get_full_name()} retrieved total user count: {total_users}.")
     return Response({"total_users": total_users})
 
-
-class AuditLogView(ListAPIView):
-    """
-    API view to list audit logs.
-    Only accessible by Admins and Superadmins.
-    """
-    serializer_class = AuditLogSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
-
-    def get_queryset(self):
-        logger.info(f"User {self.request.user.get_full_name()} accessed the audit logs.")
-        return AuditLog.objects.all().order_by('-timestamp')

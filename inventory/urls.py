@@ -13,6 +13,5 @@ urlpatterns = [
     # Category Items Endpoint - items within a specific category
     path('categories/<str:identifier>/items/', views.CategoryItemsListView.as_view(), name='category-items-list'),
     
-        # Audit log endpoint
-    path('inventory/audit-logs/', views.AuditLogView.as_view(), name='audit-log'),
+
 ]

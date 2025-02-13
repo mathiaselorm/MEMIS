@@ -5,9 +5,9 @@ from django.utils.crypto import get_random_string
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import AuditLog
 from django_rest_passwordreset.models import ResetPasswordToken
 from django_rest_passwordreset.signals import reset_password_token_created
+from actstream import action
 from datetime import timedelta
 
 
@@ -303,39 +303,15 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
         instance.user_role = new_role
         instance.save()
 
-        # Log the role change
-        AuditLog.objects.create(
-            user=self.context['request'].user,
-            action=AuditLog.ActionChoices.ASSIGN_ROLE,
-            target_user=instance,
-            details=f"Changed role to {instance.get_user_role_display()}."
+        request_user = self.context['request'].user
+        action.send(
+            request_user,
+            verb='assigned role',
+            target=instance,
+            description=(
+                f"Changed role to {instance.get_user_role_display()} for user {instance.get_full_name()}"
+            )
         )
 
         return instance
 
-
-
-
-# AuditLog Serializer
-class AuditLogSerializer(serializers.ModelSerializer):
-    """
-    Serializer for AuditLog model, to track user actions.
-    """
-    user = serializers.SerializerMethodField()
-    target_user = serializers.SerializerMethodField()
-    action_display = serializers.CharField(source='get_action_display', read_only=True)
-
-    class Meta:
-        model = AuditLog
-        fields = ['id', 'user', 'action', 'action_display', 'target_user', 'timestamp', 'details']
-        read_only_fields = ['id', 'user', 'action', 'action_display', 'target_user', 'timestamp', 'details']
-
-    def get_user(self, obj):
-        if obj.user:
-            return obj.user.get_full_name()
-        return _("System")
-
-    def get_target_user(self, obj):
-        if obj.target_user:
-            return obj.target_user.get_full_name()
-        return None

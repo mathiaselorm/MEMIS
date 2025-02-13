@@ -25,8 +25,6 @@ urlpatterns = [
     path('asset-activities/', views.AssetActivityListCreateView.as_view(), name='asset-activity-list-create'),
     path('asset-activities/<int:pk>/', views.AssetActivityDetailView.as_view(), name='asset-activity-detail'),
     
-    # Audit log endpoint
-    path('assets/audit-logs/', views.AuditLogView.as_view(), name='audit-log'),
     
     # Maintenance schedule endpoints
     path('maintenance-schedules/', views.MaintenanceScheduleListCreateView.as_view(), name='maintenance-schedule-list-create'),

@@ -4,7 +4,7 @@ from django.db import transaction
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.fields import DateField
-from auditlog.models import LogEntry
+from actstream import action
 from .models import Asset, Department, AssetActivity, MaintenanceSchedule
 
 
@@ -23,10 +23,27 @@ class DepartmentWriteSerializer(serializers.ModelSerializer):
         fields = ['name', 'head', 'contact_phone', 'contact_email', 'status']
 
     def create(self, validated_data):
-        return Department.objects.create(**validated_data)
-
+        department = super().create(validated_data)
+        # Record the activity
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            action.send(
+                request.user,
+                verb='created department',
+                target=department
+            )
+        return department
+    
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)
+        # Record the activity
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            action.send(
+                request.user,
+                verb='updated department',
+                target=instance
+            )
         return instance
 
 # Department Read Serializer
@@ -78,11 +95,27 @@ class AssetWriteSerializer(serializers.ModelSerializer):
             validated_data['added_by'] = request.user
         else:
             raise ValidationError("User must be authenticated to add assets.")
-        
-        return Asset.objects.create(**validated_data)
+
+        asset = super().create(validated_data)
+        # Record the activity
+        if request and request.user.is_authenticated:
+            action.send(
+                request.user,
+                verb='created asset',
+                target=asset
+            )
+        return asset
 
     def update(self, instance, validated_data):
         instance = super().update(instance, validated_data)
+        # Record the activity
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            action.send(
+                request.user,
+                verb='updated asset',
+                target=instance
+            )
         return instance
 
     def validate(self, data):
@@ -169,6 +202,15 @@ class AssetActivityWriteSerializer(serializers.ModelSerializer):
         if activity.post_status and activity.asset.operational_status != activity.post_status:
             activity.asset.operational_status = activity.post_status
             activity.asset.save()
+            
+        #  record an action
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            action.send(
+                request.user,
+                verb='created asset activity',
+                target=activity
+            )
         return activity
 
     @transaction.atomic
@@ -178,6 +220,15 @@ class AssetActivityWriteSerializer(serializers.ModelSerializer):
         if activity.post_status and activity.asset.operational_status != activity.post_status:
             activity.asset.operational_status = activity.post_status
             activity.asset.save()
+        
+        # Record an action
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            action.send(
+                request.user,
+                verb='updated asset activity',
+                target=activity
+            )
         return activity
 
 
@@ -262,22 +313,36 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         return data
     
     def create(self, validated_data):
-        """
-        Create a new maintenance schedule with proper defaults.
-        """
         if validated_data['frequency'] == 'once':
             validated_data['interval'] = None
             validated_data['until'] = None
-        return super().create(validated_data)
+        schedule = super().create(validated_data)
+
+        # Record creation activity
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            action.send(
+                request.user,
+                verb='created maintenance schedule',
+                target=schedule
+            )
+        return schedule
 
     def update(self, instance, validated_data):
-        """
-        Update an existing maintenance schedule with proper defaults.
-        """
-        if validated_data['frequency'] == 'once':
+        if validated_data.get('frequency') == 'once':
             validated_data['interval'] = None
             validated_data['until'] = None
-        return super().update(instance, validated_data)
+        schedule = super().update(instance, validated_data)
+
+        # Record update activity
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            action.send(
+                request.user,
+                verb='updated maintenance schedule',
+                target=schedule
+            )
+        return schedule
 
     
 
@@ -316,29 +381,4 @@ class MaintenanceScheduleReadSerializer(serializers.ModelSerializer):
             return None
 
 
-
-
-class AssetsLogEntrySerializer(serializers.ModelSerializer):
-    actor = serializers.SerializerMethodField()
-    changes = serializers.SerializerMethodField()
-
-    class Meta:
-        model = LogEntry
-        fields = ['action', 'timestamp', 'object_repr', 'changes', 'actor']
-
-    def get_changes(self, obj):
-        changes = obj.changes_dict or {}
-        change_messages = []
-
-        for field, values in changes.items():
-            if isinstance(values, list) and len(values) == 2:
-                old_value, new_value = values
-                change_messages.append(f"{field} changed from '{old_value}' to '{new_value}'")
-
-        return "; ".join(change_messages) if change_messages else "No changes recorded."
-
-    def get_actor(self, obj):
-        if obj.actor:
-            return obj.actor.get_full_name()
-        return "Unknown User"
 

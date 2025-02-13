@@ -5,7 +5,6 @@ from model_utils.models import StatusModel, SoftDeletableModel, TimeStampedModel
 from model_utils import Choices
 from model_utils.managers import QueryManager
 from autoslug import AutoSlugField
-from auditlog.registry import auditlog
 from django.db.models import Q, UniqueConstraint
 
 User = get_user_model()
@@ -91,6 +90,3 @@ class Item(ConditionalValidationMixin, StatusModel, SoftDeletableModel, TimeStam
         else:
             return "In Stock"
 
-# Register models with auditlog
-auditlog.register(Item)
-auditlog.register(Category)

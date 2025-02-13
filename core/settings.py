@@ -122,11 +122,11 @@ INSTALLED_APPS = [
     'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
+    'django.contrib.sites',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'django.contrib.sites',
     'cloudinary_storage',
     'cloudinary',
     'django_cleanup.apps.CleanupConfig',
@@ -137,14 +137,15 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'drf_yasg',
-    'auditlog',
+    'actstream',
     'channels',
     
     #installed apps
-    'accounts',
-    'assets',
-    'inventory',
-    'notification'
+    'accounts.apps.AccountsConfig',
+    'assets.apps.AssetsConfig',
+    'inventory.apps.InventoryConfig',
+    'notification.apps.NotificationConfig',
+    'activity_stream'
     
 ]
 

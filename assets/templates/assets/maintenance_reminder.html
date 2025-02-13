@@ -57,7 +57,7 @@
         <p>This is a reminder for your scheduled maintenance:</p>
         <ul>
             <li><strong>Title:</strong> {{ schedule.title }}</li>
-            <li><strong>Asset:</strong> {{ schedule.asset.name if schedule.asset else "General Maintenance" }}</li>
+            <li><strong>Asset:</strong> {{ asset_name }}</li>
             <li><strong>Date and Time:</strong> {{ occurrence|date:"Y-m-d H:i" }}</li>
             <li><strong>Description:</strong> {{ schedule.description }}</li>
         </ul>

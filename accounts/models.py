@@ -93,33 +93,3 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     def has_module_perms(self, app_label):
         return self.is_superuser or self.is_staff
 
-class AuditLog(models.Model):
-    class ActionChoices(models.TextChoices):
-        CREATE = 'create', _('Create User')
-        UPDATE = 'update', _('Update User')
-        DELETE = 'delete', _('Delete User')
-        LOGIN = 'login', _('Login')
-        LOGOUT = 'logout', _('Logout')
-        ASSIGN_ROLE = 'assign_role', _('Assign Role')
-        REVOKE_ROLE = 'revoke_role', _('Revoke Role')
-
-    user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='action_user', verbose_name=_('User'))  # The user performing the action
-    action = models.CharField(_('Action'), max_length=15, choices=ActionChoices.choices)
-    target_user = models.ForeignKey(CustomUser, on_delete=models.SET_NULL, null=True, blank=True, related_name='target_user', verbose_name=_('Target User'))  # Target user being acted on
-    timestamp = models.DateTimeField(_('Timestamp'), auto_now_add=True)
-    details = models.TextField(_('Details'), null=True, blank=True)
-
-    class Meta:
-        verbose_name = _('audit log')
-        verbose_name_plural = _('audit logs')
-        ordering = ['-timestamp']
-
-    def __str__(self):
-        user = self.user.get_full_name() if self.user else _('Unknown User')
-        target = self.target_user.get_full_name() if self.target_user else _('N/A')
-        return _('%(user)s performed %(action)s on %(target)s at %(timestamp)s') % {
-            'user': user,
-            'action': self.get_action_display(),
-            'target': target,
-            'timestamp': self.timestamp,
-        }

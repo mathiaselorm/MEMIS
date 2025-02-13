@@ -7,7 +7,6 @@ from autoslug import AutoSlugField
 from model_utils.models import StatusModel, SoftDeletableModel, TimeStampedModel
 from model_utils import Choices
 from model_utils.managers import QueryManager
-from auditlog.registry import auditlog
 from cloudinary.models import CloudinaryField
 from django.db.models import Q, UniqueConstraint
 from django.core.exceptions import ValidationError
@@ -391,9 +390,3 @@ class MaintenanceSchedule(TimeStampedModel):
         
         
     
-    
-
-# Register models with auditlog
-auditlog.register(Asset)
-auditlog.register(Department)
-auditlog.register(AssetActivity)

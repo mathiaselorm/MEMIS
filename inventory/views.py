@@ -1,22 +1,25 @@
+# inventory/views.py
+
 from django.db.models import F, Value, CharField, Case, When
 from rest_framework import generics, filters, status, permissions
 from django_filters.rest_framework import DjangoFilterBackend, CharFilter, FilterSet
 from rest_framework.response import Response
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
+
+# Import django-activity-stream
+from actstream import action
+
+# Local imports
 from accounts.permissions import IsAdminOrSuperAdmin
-from auditlog.models import LogEntry
 from .models import Category, Item
 from .serializers import (
     CategoryReadSerializer, CategoryWriteSerializer,
     ItemReadSerializer, ItemWriteSerializer,
-    InventoryLogEntrySerializer
 )
 from .utils import get_object_by_id_or_slug
-from drf_yasg.utils import swagger_auto_schema
-from drf_yasg import openapi
-
-
 
 
 # --------- CATEGORY VIEWS --------- #
@@ -51,9 +54,7 @@ class CategoryListCreateView(generics.ListCreateAPIView):
     @swagger_auto_schema(
         tags=['Categories'],
         operation_description="Retrieve a list of categories.",
-        responses={
-            200: CategoryReadSerializer(many=True),
-        },
+        responses={200: CategoryReadSerializer(many=True)},
         manual_parameters=[
             openapi.Parameter(
                 'status', openapi.IN_QUERY,
@@ -87,7 +88,24 @@ class CategoryListCreateView(generics.ListCreateAPIView):
         }
     )
     def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
+        """Create a new category, then log the event via django-activity-stream."""
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED:
+            # The serializer returns the created category data
+            category_id = response.data.get('id')
+            # Retrieve the saved category instance (re-fetch from DB)
+            try:
+                category_instance = Category.all_objects.get(id=category_id)
+                # Record creation in the activity stream
+                action.send(
+                    request.user,
+                    verb='created category',
+                    target=category_instance,
+                    description=f"Category named '{category_instance.name}'"
+                )
+            except Category.DoesNotExist:
+                pass
+        return response
 
 
 class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -100,7 +118,11 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_object(self):
         identifier = self.kwargs.get("identifier")
-        category = get_object_by_id_or_slug(Category, identifier, id_field="id", slug_field="slug", all_objects=True)
+        category = get_object_by_id_or_slug(
+            Category, identifier,
+            id_field="id", slug_field="slug",
+            all_objects=True
+        )
         return category
 
     def get_serializer_class(self):
@@ -110,16 +132,30 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
             return CategoryReadSerializer
 
     def perform_destroy(self, instance):
+        user = self.request.user
         if instance.is_removed:
             # If user is Admin or SuperAdmin, permanently delete
             if IsAdminOrSuperAdmin().has_permission(self.request, self):
+                # Log permanent deletion
+                action.send(
+                    user,
+                    verb='permanently deleted category',
+                    target=instance,
+                    description=f"Category: '{instance.name}'"
+                )
                 instance.delete()
             else:
                 raise PermissionDenied("You do not have permission to permanently delete this category.")
         else:
-            # Set is_removed to True (soft delete)
+            # Soft delete
             instance.is_removed = True
             instance.save()
+            action.send(
+                user,
+                verb='soft-deleted category',
+                target=instance,
+                description=f"Category: '{instance.name}'"
+            )
 
     @swagger_auto_schema(
         tags=['Categories'],
@@ -137,6 +173,7 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def get(self, request, *args, **kwargs):
+        """Retrieve category."""
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
@@ -153,7 +190,9 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def put(self, request, *args, **kwargs):
-        return super().put(request, *args, **kwargs)
+        """Fully update category (partial updates also allowed)."""
+        # We'll log the "updated" activity in post-update
+        return self.update(request, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Categories'],
@@ -177,9 +216,24 @@ class CategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         responses={204: "Category deleted successfully.", 404: "Category not found."}
     )
     def delete(self, request, *args, **kwargs):
+        """Soft-delete or permanent-delete a category."""
         return super().delete(request, *args, **kwargs)
 
-# --------- ITEM VIEWS --------- #
+    def update(self, request, *args, **kwargs):
+        """Override update to log a 'updated category' event."""
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            instance = self.get_object()
+            action.send(
+                request.user,
+                verb='updated category',
+                target=instance,
+                description=f"Category: '{instance.name}'"
+            )
+        return response
+
+
+# --------- ITEM FILTER / VIEWS --------- #
 
 class ItemFilterSet(FilterSet):
     stock_status = CharFilter(method='filter_by_stock_status')
@@ -202,6 +256,7 @@ class ItemFilterSet(FilterSet):
             )
         )
         return queryset.filter(stock_status__iexact=value)
+
 
 class ItemListCreateView(generics.ListCreateAPIView):
     """
@@ -234,9 +289,7 @@ class ItemListCreateView(generics.ListCreateAPIView):
     @swagger_auto_schema(
         tags=['Inventory Items'],
         operation_description="Retrieve a list of items.",
-        responses={
-            200: ItemReadSerializer(many=True),
-        },
+        responses={200: ItemReadSerializer(many=True)},
         manual_parameters=[
             openapi.Parameter(
                 'status', openapi.IN_QUERY,
@@ -289,7 +342,23 @@ class ItemListCreateView(generics.ListCreateAPIView):
         }
     )
     def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
+        """
+        Create a new item and log the creation in activity stream.
+        """
+        response = super().post(request, *args, **kwargs)
+        if response.status_code == status.HTTP_201_CREATED:
+            item_id = response.data.get('id')
+            try:
+                item_instance = Item.all_objects.get(id=item_id)
+                action.send(
+                    request.user,
+                    verb='created item',
+                    target=item_instance,
+                    description=f"Item: '{item_instance.descriptive_name}' (Serial: {item_instance.serial_number})"
+                )
+            except Item.DoesNotExist:
+                pass
+        return response
 
 
 class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -303,20 +372,32 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
             return ItemWriteSerializer
-        else:
-            return ItemReadSerializer
+        return ItemReadSerializer
 
     def perform_destroy(self, instance):
+        user = self.request.user
         if instance.is_removed:
-            # If user is Admin or SuperAdmin, permanently delete
+            # Permanently delete if user is admin
             if IsAdminOrSuperAdmin().has_permission(self.request, self):
+                action.send(
+                    user,
+                    verb='permanently deleted item',
+                    target=instance,
+                    description=f"Item: '{instance.descriptive_name}'"
+                )
                 instance.delete()
             else:
                 raise PermissionDenied("You do not have permission to permanently delete this item.")
         else:
-            # Set is_removed to True (soft delete)
+            # Soft delete
             instance.is_removed = True
             instance.save()
+            action.send(
+                user,
+                verb='soft-deleted item',
+                target=instance,
+                description=f"Item: '{instance.descriptive_name}'"
+            )
 
     @swagger_auto_schema(
         tags=['Inventory Items'],
@@ -329,7 +410,8 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
             openapi.Parameter(
                 'pk', openapi.IN_PATH,
                 description="Primary key of the item",
-                type=openapi.TYPE_INTEGER, required=True
+                type=openapi.TYPE_INTEGER,
+                required=True
             )
         ]
     )
@@ -350,7 +432,10 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def put(self, request, *args, **kwargs):
-        return super().put(request, *args, **kwargs)
+        """
+        Update item details and log 'updated item'.
+        """
+        return self.update(request, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Inventory Items'],
@@ -381,9 +466,25 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def delete(self, request, *args, **kwargs):
+        """Soft-delete or permanently delete the item."""
         return super().delete(request, *args, **kwargs)
-    
-    
+
+    def update(self, request, *args, **kwargs):
+        """
+        Override update to log an 'updated item' event if successful.
+        """
+        response = super().update(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            instance = self.get_object()
+            action.send(
+                request.user,
+                verb='updated item',
+                target=instance,
+                description=f"Item: '{instance.descriptive_name}'"
+            )
+        return response
+
+
 # --------- CATEGORY ITEM LIST VIEW --------- #
 class CategoryItemsListView(generics.ListAPIView):
     """
@@ -406,64 +507,15 @@ class CategoryItemsListView(generics.ListAPIView):
         tags=['Inventory Items'],
         operation_description="List all items within a specific category by slug or ID.",
         manual_parameters=[
-            openapi.Parameter('identifier', openapi.IN_PATH, description="ID or slug of the category", type=openapi.TYPE_STRING, required=True)
+            openapi.Parameter(
+                'identifier',
+                openapi.IN_PATH,
+                description="ID or slug of the category",
+                type=openapi.TYPE_STRING,
+                required=True
+            )
         ],
         responses={200: openapi.Response(description="A list of items within the category.", schema=ItemReadSerializer(many=True))}
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
-
-
-# --------- AUDIT LOG VIEW --------- #
-
-class AuditLogView(generics.ListAPIView):
-    """
-    API endpoint that returns a list of all audit logs for Items and Categories from Django-Auditlog.
-    """
-    serializer_class = InventoryLogEntrySerializer
-    permission_classes = [IsAuthenticated]
-    queryset = LogEntry.objects.all()
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['object_repr', 'changes']
-    ordering_fields = ['timestamp']
-    ordering = ['-timestamp']
-
-    @swagger_auto_schema(
-        tags=['Audit Logs'],
-        operation_summary="Retrieve all audit log entries for Items and Categories",
-        operation_description="Returns a list of audit log entries recorded by Django-Auditlog for Item and Category models, ordered by most recent.",
-        responses={
-            200: openapi.Response(description="A list of audit log entries.", schema=InventoryLogEntrySerializer(many=True)),
-            403: "Forbidden - User is not authorized to access this endpoint."
-        },
-        manual_parameters=[
-            openapi.Parameter(
-                'item_id',
-                openapi.IN_QUERY,
-                description="Filter logs by Item ID",
-                type=openapi.TYPE_STRING,
-                required=False
-            ),
-            openapi.Parameter(
-                'item_name',
-                openapi.IN_QUERY,
-                description="Filter logs by Item name",
-                type=openapi.TYPE_STRING,
-                required=False
-            )
-        ]
-    )
-    def get(self, request, format=None):
-        item_id = request.query_params.get('item_id')
-        item_name = request.query_params.get('item_name')
-
-        queryset = LogEntry.objects.all().order_by('-timestamp')
-
-        # Apply filters for Item and Category if provided
-        if item_id:
-            queryset = queryset.filter(object_pk=item_id, content_type__model='item')
-        elif item_name:
-            queryset = queryset.filter(object_repr__icontains=item_name, content_type__model='item')
-
-        serializer = InventoryLogEntrySerializer(queryset, many=True)
-        return Response(serializer.data)

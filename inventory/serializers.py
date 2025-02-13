@@ -1,6 +1,5 @@
 from rest_framework import serializers
 from .models import Category, Item
-from auditlog.models import LogEntry
 
 # --------- CATEGORY SERIALIZERS --------- #
 
@@ -108,31 +107,4 @@ class ItemWriteSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
 
-# --------- INVENTORY LOG SERIALIZER --------- #
 
-class InventoryLogEntrySerializer(serializers.ModelSerializer):
-    """
-    Serializer for audit log entries.
-    """
-    actor = serializers.SerializerMethodField()
-    changes = serializers.SerializerMethodField()
-
-    class Meta:
-        model = LogEntry
-        fields = ['action', 'timestamp', 'object_repr', 'changes', 'actor']
-
-    def get_changes(self, obj):
-        changes = obj.changes_dict or {}
-        change_messages = []
-
-        for field, values in changes.items():
-            if isinstance(values, list) and len(values) == 2:
-                old_value, new_value = values
-                change_messages.append(f"{field} changed from '{old_value}' to '{new_value}'")
-
-        return "; ".join(change_messages) if change_messages else "No changes recorded."
-
-    def get_actor(self, obj):
-        if obj.actor:
-            return obj.actor.get_full_name()
-        return "Unknown User"

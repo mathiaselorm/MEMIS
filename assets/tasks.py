@@ -37,6 +37,8 @@ def send_maintenance_reminder(schedule_id, occurrence):
             'schedule': schedule,
             'occurrence': occurrence,
             'current_year': timezone.now().year,  # Ensure you have the current year
+            'asset_name': schedule.asset.name if schedule.asset else "General Maintenance",
+
         }
         html_content = render_to_string('assets/maintenance_reminder.html', context)
         text_content = strip_tags(html_content)
