@@ -109,7 +109,7 @@ CSRF_COOKIE_HTTPONLY = False  # Allows JavaScript to access the token
 CSRF_COOKIE_NAME = "csrftoken"  # Name of the CSRF token in cookies
 CSRF_COOKIE_SECURE = not DEBUG  # Set to True in production
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000'
+    'http://localhost:3000',
     'https://memis-90605b282646.herokuapp.com'
 ]  
 
