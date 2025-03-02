@@ -281,7 +281,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 httponly=True,
                 secure=secure_cookie, 
                 samesite='Lax' if settings.DEBUG else 'None',  # Set SameSite=Lax in dev, None in production
-                max_age=access_token_lifetime.total_seconds(),  # Set cookie expiration to match access token
+                max_age=31536000   # Set cookie expiration to match access token
             )
             response.set_cookie(
                 key='refresh_token',
@@ -291,11 +291,23 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 samesite='Lax' if settings.DEBUG else 'None', 
                 max_age=refresh_token_lifetime.total_seconds(),  # 5 days if True, session-based if False
             )
+            
+            #Generate a CSRF token and send it in a cookie
+            csrf_token = get_token(request)
+            response.set_cookie(
+                key='csrf_token',
+                value=csrf_token,
+                httponly=False,  # CSRF token needs to be readable by the frontend
+                secure=secure_cookie, 
+                samesite='Lax' if settings.DEBUG else 'None',  
+                max_age=access_token_lifetime.total_seconds(), # Set cookie expiration to match access token
+            )
 
             user_data = response.data.get('user', {})
             # Return a simplified JSON response
             response.data = {
                 "message": "Tokens set in cookies. CSRF token provided.",
+                "csrf_token": csrf_token,
                 "user": user_data  # Just use the data from the serializer
             }
 
@@ -425,6 +437,17 @@ class CustomTokenRefreshView(APIView):
                 secure=secure_cookie,
                 samesite='Lax' if settings.DEBUG else 'None',
                 max_age=access_token_lifetime.total_seconds(),
+            )
+            
+             #Generate a CSRF token and send it in a cookie
+            csrf_token = get_token(request)
+            response.set_cookie(
+                key='csrf_token',
+                value=csrf_token,
+                httponly=False,  # CSRF token needs to be readable by the frontend
+                secure=secure_cookie, 
+                samesite='Lax' if settings.DEBUG else 'None',  
+                max_age=31536000,
             )
 
             return response
