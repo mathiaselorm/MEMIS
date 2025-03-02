@@ -222,7 +222,10 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 ROOT_URLCONF = 'core.urls'
 
 CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    # add other allowed origins as needed
+]
 
 # Password reset token expiration time in hours
 DJANGO_REST_MULTITOKENAUTH_RESET_TOKEN_EXPIRY_TIME = 1 # Default is 24 hours
