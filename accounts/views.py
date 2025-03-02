@@ -293,15 +293,15 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             )
             
             # Generate a CSRF token and send it in a cookie
-            csrf_token = get_token(request)
-            response.set_cookie(
-                key='csrftoken',
-                value=csrf_token,
-                httponly=False,  # CSRF token needs to be readable by the frontend
-                secure=secure_cookie, 
-                samesite='Lax' if settings.DEBUG else 'None',  
-                max_age=access_token_lifetime.total_seconds(), # Set cookie expiration to match access token
-            )
+            # csrf_token = get_token(request)
+            # response.set_cookie(
+            #     key='csrftoken',
+            #     value=csrf_token,
+            #     httponly=False,  # CSRF token needs to be readable by the frontend
+            #     secure=secure_cookie, 
+            #     samesite='Lax' if settings.DEBUG else 'None',  
+            #     max_age=access_token_lifetime.total_seconds(), # Set cookie expiration to match access token
+            # )
 
             user_data = response.data.get('user', {})
             # Return a simplified JSON response
@@ -438,16 +438,16 @@ class CustomTokenRefreshView(APIView):
                 max_age=access_token_lifetime.total_seconds(),
             )
 
-            # Set new CSRF token
-            csrf_token = get_token(request)
-            response.set_cookie(
-                key='csrftoken',
-                value=csrf_token,
-                httponly=False,
-                secure=secure_cookie,
-                samesite='Lax' if settings.DEBUG else 'None',
-                max_age=access_token_lifetime.total_seconds(),
-            )
+            # # Set new CSRF token
+            # csrf_token = get_token(request)
+            # response.set_cookie(
+            #     key='csrftoken',
+            #     value=csrf_token,
+            #     httponly=False,
+            #     secure=secure_cookie,
+            #     samesite='Lax' if settings.DEBUG else 'None',
+            #     max_age=access_token_lifetime.total_seconds(),
+            # )
             
             # #Return the new access token for debugging in development
             # if settings.DEBUG:

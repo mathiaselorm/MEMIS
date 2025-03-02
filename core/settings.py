@@ -41,12 +41,7 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG', default=False)
 
 
-ALLOWED_HOSTS = [
-    "localhost",
-    "127.0.0.1",
-    "memis-90605b282646.herokuapp.com",
-    "memis.vercel.app",
-]
+ALLOWED_HOSTS = ['*']
 
 
 
@@ -110,16 +105,27 @@ CELERY_BEAT_SCHEDULE = {
 
 PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://memis.vercel.app",
+]
+
 CORS_ALLOW_CREDENTIALS = True
-CSRF_COOKIE_HTTPONLY = False  # Must be False if accessing via js-cookie
-CSRF_COOKIE_SAMESITE = "None"
+
+if DEBUG:
+    CSRF_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SECURE = False
+else:
+    CSRF_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SECURE = True
+
 CSRF_COOKIE_HTTPONLY = False  # Allows JavaScript to access the token
 CSRF_COOKIE_NAME = "csrftoken"  # Name of the CSRF token in cookies
-CSRF_COOKIE_SECURE = not DEBUG  # Set to True in production
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
-    "https://memis-90605b282646.herokuapp.com",
     "https://memis.vercel.app",
+    "http://127.0.0.1:8000",
+    "https://memis-90605b282646.herokuapp.com"
 ]  
 
 
@@ -224,14 +230,6 @@ MEDIA_URL = 'https://res.cloudinary.com/dr8uzgh5e/image/upload/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 ROOT_URLCONF = 'core.urls'
-
-CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "https://memis.vercel.app",
-    "https://memis-90605b282646.herokuapp.com",
-]
 
 
 # Password reset token expiration time in hours
