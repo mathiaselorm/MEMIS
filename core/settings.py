@@ -221,11 +221,13 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 ROOT_URLCONF = 'core.urls'
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = [
-    "localhost:3000",
-    # add other allowed origins as needed
+    "http://localhost:3000",
+    "https://memis.vercel.app",
+    "https://memis-90605b282646.herokuapp.com",
 ]
+
 
 # Password reset token expiration time in hours
 DJANGO_REST_MULTITOKENAUTH_RESET_TOKEN_EXPIRY_TIME = 1 # Default is 24 hours
