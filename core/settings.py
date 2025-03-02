@@ -41,7 +41,13 @@ SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG', default=False)
 
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [
+    "localhost",
+    "127.0.0.1",
+    "memis-90605b282646.herokuapp.com",
+    "memis.vercel.app",
+]
+
 
 
 EMAIL_BACKEND = 'accounts.utils.BrevoAPIBackend'
@@ -111,8 +117,9 @@ CSRF_COOKIE_HTTPONLY = False  # Allows JavaScript to access the token
 CSRF_COOKIE_NAME = "csrftoken"  # Name of the CSRF token in cookies
 CSRF_COOKIE_SECURE = not DEBUG  # Set to True in production
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000',
-    'https://memis-90605b282646.herokuapp.com'
+    "http://localhost:3000",
+    "https://memis-90605b282646.herokuapp.com",
+    "https://memis.vercel.app",
 ]  
 
 
@@ -218,8 +225,14 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 ROOT_URLCONF = 'core.urls'
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "https://memis.vercel.app",
+    "https://memis-90605b282646.herokuapp.com",
+]
+
 
 # Password reset token expiration time in hours
 DJANGO_REST_MULTITOKENAUTH_RESET_TOKEN_EXPIRY_TIME = 1 # Default is 24 hours
