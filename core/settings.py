@@ -47,9 +47,9 @@ ALLOWED_HOSTS = ['*']
 EMAIL_BACKEND = 'accounts.utils.BrevoAPIBackend'
 
 
-FRONTEND_URL = 'memis.vercel.app' 
+# FRONTEND_URL = 'memis.vercel.app' 
 
-# FRONTEND_URL = 'http://localhost:5173' 
+FRONTEND_URL = 'http://localhost:3000' 
 
 
 
@@ -104,7 +104,9 @@ CELERY_BEAT_SCHEDULE = {
 
 PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 
-
+CORS_ALLOW_CREDENTIALS = True
+CSRF_COOKIE_HTTPONLY = False  # Must be False if accessing via js-cookie
+CSRF_COOKIE_SAMESITE = "None"
 CSRF_COOKIE_HTTPONLY = False  # Allows JavaScript to access the token
 CSRF_COOKIE_NAME = "csrftoken"  # Name of the CSRF token in cookies
 CSRF_COOKIE_SECURE = not DEBUG  # Set to True in production
@@ -113,10 +115,6 @@ CSRF_TRUSTED_ORIGINS = [
     'https://memis-90605b282646.herokuapp.com'
 ]  
 
-
-
-# Use Cloudinary as the default file storage
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 
 # Application definition
@@ -145,7 +143,7 @@ INSTALLED_APPS = [
     
     #installed apps
     'accounts.apps.AccountsConfig',
-    'assets.apps.AssetsConfig',
+    'equipment.apps.EquipmentConfig',
     'inventory.apps.InventoryConfig',
     'notification.apps.NotificationConfig',
     'activity_stream'
@@ -162,7 +160,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    # 'simple_history.middleware.HistoryRequestMiddleware',
 ]
 
 REST_FRAMEWORK = {

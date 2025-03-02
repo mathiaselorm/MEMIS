@@ -1,20 +1,22 @@
 from rest_framework import generics, status
+from rest_framework.generics import RetrieveUpdateDestroyAPIView
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, DjangoModelPermissions
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.decorators import api_view, permission_classes
 from actstream import action
 
 from .models import (
-    Asset, Department, AssetActivity,
+    Equipment, Department, Supplier, EquipmentMaintenanceActivity,
     MaintenanceSchedule
     )
 from .serializers import(
     DepartmentWriteSerializer, DepartmentReadSerializer,
-    AssetWriteSerializer, AssetReadSerializer,
-    AssetActivityReadSerializer, AssetActivityWriteSerializer,
+    SupplierWriteSerializer, SupplierReadSerializer,
+    EquipmentWriteSerializer, EquipmentReadSerializer,
+    EquipmentMaintenanceActivityReadSerializer, EquipmentMaintenanceActivityWriteSerializer,
     MaintenanceScheduleWriteSerializer, 
     MaintenanceScheduleReadSerializer
     )
@@ -32,49 +34,22 @@ logger = logging.getLogger(__name__)
 
 
 
+
 class DepartmentList(generics.ListCreateAPIView):
     """
     List all departments or create a new department.
     """
     permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        """
-        Retrieve departments, optionally filtered by 'status' and 'is_removed' query parameters.
-        """
-        queryset = Department.all_objects.all()
-        status_param = self.request.query_params.get('status')
-        is_removed_param = self.request.query_params.get('is_removed')
-
-        if status_param:
-            queryset = queryset.filter(status=status_param)
-        if is_removed_param is not None:
-            is_removed = is_removed_param.lower() == 'true'
-            queryset = queryset.filter(is_removed=is_removed)
-        return queryset
-
-    def get_permissions(self):
-        if self.request.method == "POST":
-            self.permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
-        return super().get_permissions()
+    queryset = Department.objects.all()
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return DepartmentWriteSerializer
         return DepartmentReadSerializer
-    
+
     @swagger_auto_schema(
         tags=['Departments'],
-        operation_description="Retrieve a list of departments. Optionally filter by status.",
-        manual_parameters=[
-            openapi.Parameter(
-                'status', openapi.IN_QUERY,
-                description="Filter departments by status ('draft' or 'published')",
-                type=openapi.TYPE_STRING,
-                required=False,
-                enum=['draft', 'published']
-            ),
-        ],
+        operation_description="Retrieve a list of departments.",
         responses={200: DepartmentReadSerializer(many=True)},
     )
     def get(self, request, *args, **kwargs):
@@ -140,51 +115,31 @@ class DepartmentList(generics.ListCreateAPIView):
         return super().post(request, *args, **kwargs)
 
 
-class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
+
+class DepartmentDetail(RetrieveUpdateDestroyAPIView):
     """
     Retrieve, update, or delete a department using either an ID or a slug.
     """
     permission_classes = [IsAuthenticated]
-    queryset = Department.all_objects.all()
+    queryset = Department.objects.all()
 
     def get_object(self):
         """
-        Override to get the department by ID or slug.
+        Retrieve the department by its ID or slug.
         """
         identifier = self.kwargs['identifier']
         return get_object_by_id_or_slug(Department, identifier, id_field='id', slug_field='slug')
 
     def get_serializer_class(self):
-        if self.request.method in ['GET']:
+        if self.request.method == 'GET':
             return DepartmentReadSerializer
-        else:
-            return DepartmentWriteSerializer
+        return DepartmentWriteSerializer
 
     def perform_destroy(self, instance):
-        request = self.request
-        user = request.user if request and request.user.is_authenticated else None
-
-        if instance.is_removed:
-            # If user is Admin or SuperAdmin, permanently delete
-            if IsAdminOrSuperAdmin().has_permission(self.request, self):
-                # Record the permanent deletion
-                action.send(
-                    user or instance,
-                    verb='permanently deleted department',
-                    target=instance
-                )
-                instance.delete()  # Hard delete
-            else:
-                raise PermissionDenied("You do not have permission to permanently delete this department.")
-        else:
-            # Soft delete
-            instance.is_removed = True
-            instance.save()
-            action.send(
-                user or instance,
-                verb='soft-deleted department',
-                target=instance
-            )
+        # Perform a hard delete
+        user = self.request.user if self.request.user.is_authenticated else None
+        action.send(user or instance, verb='deleted department', target=instance)
+        instance.delete()
 
     @swagger_auto_schema(
         tags=['Departments'],
@@ -205,9 +160,7 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
                         )
                     }
                 ),
-                examples={
-                    "application/json": {"detail": "Not found."}
-                }
+                examples={"application/json": {"detail": "Not found."}}
             ),
         },
         manual_parameters=[
@@ -242,11 +195,7 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
                         items=openapi.Schema(type=openapi.TYPE_STRING)
                     )
                 ),
-                examples={
-                    "application/json": {
-                        "name": ["This field may not be blank."]
-                    }
-                }
+                examples={"application/json": {"name": ["This field may not be blank."]}}
             ),
             404: openapi.Response(
                 description="Department not found.",
@@ -259,9 +208,7 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
                         )
                     }
                 ),
-                examples={
-                    "application/json": {"detail": "Not found."}
-                }
+                examples={"application/json": {"detail": "Not found."}}
             )
         },
         manual_parameters=[
@@ -276,8 +223,8 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         """
         Update a department by its ID or slug.
         """
-        partial = True  # Enable partial updates
-        return self.update(request, *args, **kwargs, partial=partial)
+        kwargs['partial'] = True  # Enable partial updates
+        return self.update(request, *args, **kwargs)
 
     @swagger_auto_schema(
         tags=['Departments'],
@@ -297,9 +244,7 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
                         )
                     }
                 ),
-                examples={
-                    "application/json": {"detail": "Not found."}
-                }
+                examples={"application/json": {"detail": "Not found."}}
             )
         },
         manual_parameters=[
@@ -315,6 +260,158 @@ class DepartmentDetail(generics.RetrieveUpdateDestroyAPIView):
         Delete a department by its ID or slug.
         """
         return super().delete(request, *args, **kwargs)
+
+
+
+
+class SupplierListCreateView(generics.ListCreateAPIView):
+    """
+    List all suppliers or create a new supplier.
+    """
+    permission_classes = [IsAuthenticated]
+    queryset = Supplier.objects.all() 
+     
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return SupplierWriteSerializer
+        return SupplierReadSerializer
+
+    @swagger_auto_schema(
+        tags=['Suppliers'],
+        operation_description="Retrieve a list of all suppliers.",
+        responses={
+            200: SupplierReadSerializer(many=True),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        """
+        Retrieve a list of suppliers.
+        """
+        return super().get(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        tags=['Suppliers'],
+        operation_description="Create a new supplier.",
+        request_body=SupplierWriteSerializer,
+        responses={
+            201: SupplierReadSerializer,
+            400: openapi.Response(
+                description="Invalid input.",
+                examples={"application/json": {"detail": "Validation error details."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        }
+    )
+    def post(self, request, *args, **kwargs):
+        """
+        Create a new supplier.
+        """
+        return super().post(request, *args, **kwargs)
+
+
+class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update, or delete a supplier by its primary key.
+    """
+    permission_classes = [IsAuthenticated]
+    queryset = Supplier.objects.all()
+    lookup_field = 'pk'
+
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return SupplierWriteSerializer
+        return SupplierReadSerializer
+    
+    def perform_destroy(self, instance):
+        # Perform a hard delete
+        user = self.request.user if self.request.user.is_authenticated else None
+        action.send(user or instance, verb='deleted a supplier', target=instance)
+        instance.delete()
+
+    @swagger_auto_schema(
+        tags=['Suppliers'],
+        operation_description="Retrieve a supplier by its primary key.",
+        responses={
+            200: SupplierReadSerializer,
+            404: openapi.Response(
+                description="Supplier not found.",
+                examples={"application/json": {"detail": "Not found."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        },
+        manual_parameters=[
+            openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
+        ]
+    )
+    def get(self, request, *args, **kwargs):
+        """
+        Retrieve a supplier by its primary key.
+        """
+        return super().get(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        tags=['Suppliers'],
+        operation_description="Update a supplier by its primary key.",
+        request_body=SupplierWriteSerializer,
+        responses={
+            200: SupplierReadSerializer,
+            400: openapi.Response(
+                description="Invalid input.",
+                examples={"application/json": {"detail": "Validation error details."}}
+            ),
+            404: openapi.Response(
+                description="Supplier not found.",
+                examples={"application/json": {"detail": "Not found."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        """
+        Update a supplier by its primary key.
+        """
+        kwargs['partial'] = True  # Enable partial updates
+        return super().put(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        tags=['Suppliers'],
+        operation_description="Delete a supplier by its primary key.",
+        responses={
+            204: openapi.Response(description="Supplier deleted successfully."),
+            404: openapi.Response(
+                description="Supplier not found.",
+                examples={"application/json": {"detail": "Not found."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        },
+        manual_parameters=[
+            openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
+        ]
+    )
+    def delete(self, request, *args, **kwargs):
+        """
+        Delete a supplier by its primary key.
+        """
+        return super().delete(request, *args, **kwargs)
+
+
 
 
 class TotalDepartmentsView(generics.GenericAPIView):
@@ -358,47 +455,23 @@ class TotalDepartmentsView(generics.GenericAPIView):
         return Response({'total_departments': total_departments})
 
 
-class AssetList(generics.ListCreateAPIView):
+class EquipmentList(generics.ListCreateAPIView):
     """
-    List all assets or create a new asset.
+    List all equipment or create a new equipment entry.
     """
     permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        """
-        Retrieve assets, optionally filtered by 'status' and 'is_removed' query parameters.
-        """
-        queryset = Asset.all_objects.all()  # Includes soft-deleted assets
-        status_param = self.request.query_params.get('status')
-        is_removed_param = self.request.query_params.get('is_removed')
-
-        if status_param:
-            queryset = queryset.filter(status=status_param)
-        if is_removed_param is not None:
-            # Convert is_removed_param to boolean
-            is_removed = is_removed_param.lower() == 'true'
-            queryset = queryset.filter(is_removed=is_removed)
-        return queryset
+    queryset = Equipment.objects.all()
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
-            return AssetWriteSerializer
-        return AssetReadSerializer
+            return EquipmentWriteSerializer
+        return EquipmentReadSerializer
 
     @swagger_auto_schema(
-        tags=['Assets'],
-        operation_description="Retrieve a list of assets. Optionally filter by status.",
-        manual_parameters=[
-            openapi.Parameter(
-                'status', openapi.IN_QUERY,
-                description="Filter assets by status ('draft' or 'published')",
-                type=openapi.TYPE_STRING,
-                required=False,
-                enum=['draft', 'published']
-            ),
-        ],
+        tags=['Equipment'],
+        operation_description="Retrieve a list of all equipment.",
         responses={
-            200: AssetReadSerializer(many=True),
+            200: EquipmentReadSerializer(many=True),
             401: openapi.Response(
                 description="Unauthorized access.",
                 schema=openapi.Schema(
@@ -407,26 +480,24 @@ class AssetList(generics.ListCreateAPIView):
                         "detail": openapi.Schema(type=openapi.TYPE_STRING)
                     }
                 ),
-                examples={
-                    "application/json": {"detail": "Authentication credentials were not provided."}
-                }
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
             )
         }
     )
     def get(self, request, *args, **kwargs):
         """
-        Retrieve a list of all assets.
+        Retrieve a list of all equipment.
         """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Assets'],
-        operation_description="Create a new asset.",
-        request_body=AssetWriteSerializer,
+        tags=['Equipment'],
+        operation_description="Create a new equipment entry.",
+        request_body=EquipmentWriteSerializer,
         responses={
             201: openapi.Response(
-                description="Asset successfully created.",
-                schema=AssetWriteSerializer,
+                description="Equipment successfully created.",
+                schema=EquipmentWriteSerializer,
             ),
             400: openapi.Response(
                 description="Bad request - Invalid data submitted.",
@@ -446,101 +517,78 @@ class AssetList(generics.ListCreateAPIView):
                         "detail": openapi.Schema(type=openapi.TYPE_STRING)
                     }
                 ),
-                examples={
-                    "application/json": {"detail": "Authentication credentials were not provided."}
-                }
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
             ),
         }
     )
     def post(self, request, *args, **kwargs):
         """
-        Create a new asset.
+        Create a new equipment entry.
         """
         return super().post(request, *args, **kwargs)
 
 
-class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
+
+class EquipmentDetail(RetrieveUpdateDestroyAPIView):
     """
-    Retrieve, update, or delete an asset.
+    Retrieve, update, or delete equipment.
     """
     permission_classes = [IsAuthenticated]
-    queryset = Asset.all_objects.all()
+    queryset = Equipment.objects.all()  
     lookup_field = 'pk'
 
     def get_serializer_class(self):
-        if self.request.method in ['GET']:
-            return AssetReadSerializer
-        else:
-            return AssetWriteSerializer
+        if self.request.method == 'GET':
+            return EquipmentReadSerializer
+        return EquipmentWriteSerializer
 
     def perform_destroy(self, instance):
         user = self.request.user if self.request.user.is_authenticated else None
-
-        if instance.is_removed:
-            # Permanently delete if user is admin
-            if IsAdminOrSuperAdmin().has_permission(self.request, self):
-                action.send(
-                    user or instance,
-                    verb='permanently deleted asset',
-                    target=instance
-                )
-                Asset.all_objects.filter(pk=instance.pk).delete()
-            else:
-                raise PermissionDenied("You do not have permission to permanently delete this asset.")
-        else:
-            # Soft delete
-            instance.is_removed = True
-            instance.save()
-            action.send(
-                user or instance,
-                verb='soft-deleted asset',
-                target=instance
-            )
-
+        # Log deletion and perform hard delete
+        action.send(user or instance, verb='deleted equipment', target=instance)
+        instance.delete()
 
     @swagger_auto_schema(
-        tags=['Assets'],
-        operation_description="Retrieve an asset by its primary key.",
+        tags=['Equipment'],
+        operation_description="Retrieve equipment by its primary key.",
         responses={
             200: openapi.Response(
-                description="Asset retrieved successfully.",
-                schema=AssetReadSerializer,
+                description="Equipment retrieved successfully.",
+                schema=EquipmentReadSerializer,
             ),
             404: openapi.Response(
-                description="Asset not found.",
+                description="Equipment not found.",
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     properties={
                         "detail": openapi.Schema(type=openapi.TYPE_STRING)
                     }
                 ),
-                examples={
-                    "application/json": {"detail": "Not found."}
-                }
+                examples={"application/json": {"detail": "Not found."}}
             ),
         },
         manual_parameters=[
             openapi.Parameter(
                 'pk', openapi.IN_PATH,
-                description="Primary key of the asset",
+                description="Primary key of the equipment",
                 type=openapi.TYPE_INTEGER, required=True
             )
         ]
     )
     def get(self, request, *args, **kwargs):
         """
-        Retrieve an asset by its primary key.
+        Retrieve equipment by its primary key.
         """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Assets'],
-        operation_description="Update an asset by its primary key.",
-        request_body=AssetWriteSerializer,
+        tags=['Equipment'],
+        operation_description="Update equipment by its primary key.",
+        request_body=EquipmentWriteSerializer,
         responses={
             200: openapi.Response(
-                description="Asset updated successfully.",
-                schema=AssetWriteSerializer,
+                description="Equipment updated successfully.",
+                schema=EquipmentWriteSerializer,
             ),
             400: openapi.Response(
                 description="Invalid data provided.",
@@ -553,41 +601,37 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
                 ),
             ),
             404: openapi.Response(
-                description="Asset not found.",
+                description="Equipment not found.",
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
-                    properties={
-                        "detail": openapi.Schema(type=openapi.TYPE_STRING)
-                    }
+                    properties={"detail": openapi.Schema(type=openapi.TYPE_STRING)}
                 ),
-                examples={
-                    "application/json": {"detail": "Not found."}
-                }
+                examples={"application/json": {"detail": "Not found."}}
             )
         },
         manual_parameters=[
             openapi.Parameter(
                 'pk', openapi.IN_PATH,
-                description="Primary key of the asset",
+                description="Primary key of the equipment",
                 type=openapi.TYPE_INTEGER, required=True
             )
         ]
     )
     def put(self, request, *args, **kwargs):
         """
-        Update an asset by its primary key.
+        Update equipment by its primary key.
         """
-        partial = True  # Enable partial updates
-        return self.update(request, *args, **kwargs, partial=partial)
+        kwargs['partial'] = True  # Enable partial updates
+        return self.update(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Assets'],
-        operation_description="Partially update an asset by its primary key.",
-        request_body=AssetWriteSerializer(partial=True),
+        tags=['Equipment'],
+        operation_description="Partially update equipment by its primary key.",
+        request_body=EquipmentWriteSerializer(partial=True),
         responses={
             200: openapi.Response(
-                description="Asset partially updated successfully.",
-                schema=AssetWriteSerializer,
+                description="Equipment partially updated successfully.",
+                schema=EquipmentWriteSerializer,
             ),
             400: openapi.Response(
                 description="Invalid data provided.",
@@ -600,94 +644,77 @@ class AssetDetail(generics.RetrieveUpdateDestroyAPIView):
                 ),
             ),
             404: openapi.Response(
-                description="Asset not found.",
+                description="Equipment not found.",
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
-                    properties={
-                        "detail": openapi.Schema(type=openapi.TYPE_STRING)
-                    }
+                    properties={"detail": openapi.Schema(type=openapi.TYPE_STRING)}
                 ),
-                examples={
-                    "application/json": {"detail": "Not found."}
-                }
+                examples={"application/json": {"detail": "Not found."}}
             )
         },
         manual_parameters=[
             openapi.Parameter(
                 'pk', openapi.IN_PATH,
-                description="Primary key of the asset",
+                description="Primary key of the equipment",
                 type=openapi.TYPE_INTEGER, required=True
             )
         ]
     )
     def patch(self, request, *args, **kwargs):
         """
-        Partially update an asset by its primary key.
+        Partially update equipment by its primary key.
         """
         return super().partial_update(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Assets'],
-        operation_description="Delete an asset by its primary key. If the asset is not soft-deleted, it will be soft-deleted. If it is already soft-deleted, it will be permanently deleted (only for Admin or SuperAdmin).",
+        tags=['Equipment'],
+        operation_description="Delete equipment by its primary key.",
         responses={
-            204: openapi.Response(
-                description="Asset deleted successfully."
-            ),
-            403: openapi.Response(
-                description="Permission denied.",
-                examples={
-                    "application/json": {"detail": "You do not have permission to permanently delete this asset."}
-                }
-            ),
+            204: openapi.Response(description="Equipment deleted successfully."),
             404: openapi.Response(
-                description="Asset not found.",
-                examples={
-                    "application/json": {"detail": "Not found."}
-                }
+                description="Equipment not found.",
+                examples={"application/json": {"detail": "Not found."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
             )
         },
         manual_parameters=[
             openapi.Parameter(
                 'pk', openapi.IN_PATH,
-                description="Primary key of the asset",
+                description="Primary key of the equipment",
                 type=openapi.TYPE_INTEGER, required=True
             )
         ]
     )
     def delete(self, request, *args, **kwargs):
-        instance = self.get_object()  # Retrieve the instance
-        deletion_status = self.perform_destroy(instance)  # Delegate logic to `perform_destroy`
-        
-        # Customize the response based on the deletion state
-        if deletion_status == "permanent_delete":
-            return Response(
-                {"detail": "Asset permanently deleted."},
-                status=status.HTTP_204_NO_CONTENT
-            )
-        elif deletion_status == "soft_delete":
-            return Response(
-                {"detail": "Asset soft-deleted successfully."},
-                status=status.HTTP_204_NO_CONTENT
-            )
+        """
+        Delete equipment by its primary key.
+        """
+        self.perform_destroy(self.get_object())
+        return Response({"detail": "Equipment deleted successfully."}, status=status.HTTP_204_NO_CONTENT)
 
-class TotalAssetsView(APIView):
+
+
+class TotalEquipmentView(APIView):
     """
-    View to return the total number of assets in the system.
+    View to return the total number of equipment in the system.
     """
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        tags=['Assets'],
-        operation_description="Get the total number of assets currently registered in the system.",
+        tags=['Equipment'],
+        operation_description="Get the total number of equipment currently registered in the system.",
         responses={
             200: openapi.Response(
-                description="Total number of assets successfully retrieved.",
+                description="Total number of equipment successfully retrieved.",
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     properties={
-                        'total_assets': openapi.Schema(
+                        'total_equipment': openapi.Schema(
                             type=openapi.TYPE_INTEGER,
-                            description="Total count of assets"
+                            description="Total count of equipment"
                         )
                     }
                 )
@@ -695,28 +722,28 @@ class TotalAssetsView(APIView):
         }
     )
     def get(self, request, format=None):
-        total_assets = Asset.objects.count()
-        return Response({'total_assets': total_assets})
+        total_equipment = Equipment.objects.count()
+        return Response({'total_equipment': total_equipment})
 
 
-class TotalAssetsUnderMaintenanceView(APIView):
+class TotalEquipmentUnderMaintenanceView(APIView):
     """
-    View to return the total number of assets currently under maintenance.
+    View to return the total number of equipment currently under maintenance.
     """
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
-        tags=['Assets'],
-        operation_description="Get the total number of assets currently under maintenance.",
+        tags=['Equipment'],
+        operation_description="Get the total number of equipment currently under maintenance.",
         responses={
             200: openapi.Response(
-                description="Total number of assets under maintenance successfully retrieved.",
+                description="Total number of equipment under maintenance successfully retrieved.",
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
                     properties={
-                        'assets_under_maintenance': openapi.Schema(
+                        'equipment_under_maintenance': openapi.Schema(
                             type=openapi.TYPE_INTEGER,
-                            description="Total count of assets under maintenance"
+                            description="Total count of equipment under maintenance"
                         )
                     }
                 )
@@ -724,86 +751,32 @@ class TotalAssetsUnderMaintenanceView(APIView):
         }
     )
     def get(self, request, format=None):
-        # filter assets under maintenance
-        assets_under_maintenance_count = Asset.objects.filter(
-            operational_status=Asset.OPERATIONAL_STATUS.under_maintenance,
+        equipment_under_maintenance_count = Equipment.objects.filter(
+            operational_status=Equipment.OPERATIONAL_STATUS.under_maintenance,
             is_removed=False
         ).count()
-        return Response({'assets_under_maintenance': assets_under_maintenance_count})
+        return Response({'equipment_under_maintenance': equipment_under_maintenance_count})
 
 
 
-
-
-@swagger_auto_schema(
-    method='post',
-    operation_description="Restore a soft-deleted asset.",
-    responses={
-        200: openapi.Response(
-            description="Asset restored successfully.",
-            examples={
-                "application/json": {"detail": "Asset restored successfully."}
-            }
-        ),
-        404: openapi.Response(
-            description="Asset not found or not soft-deleted.",
-            examples={
-                "application/json": {"detail": "Asset not found or not soft-deleted."}
-            }
-        ),
-    },
-    manual_parameters=[
-        openapi.Parameter(
-            'pk', openapi.IN_PATH,
-            description="Primary key of the asset to restore",
-            type=openapi.TYPE_INTEGER,
-            required=True,
-        )
-    ]
-)
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def restore_asset(request, pk):
-    """
-    Restore a soft-deleted asset by its primary key.
-
-    Parameters:
-    - pk (int): Primary key of the asset to restore.
-
-    Returns:
-    - 200 OK: Asset restored successfully.
-    - 404 Not Found: Asset not found or not soft-deleted.
-    """
-    try:
-        asset = Asset.all_objects.get(pk=pk, is_removed=True)
-        asset.is_removed = False
-        asset.save()
-        action.send(
-            request.user if request.user.is_authenticated else asset,
-            verb='restored asset',
-            target=asset
-        )
-        return Response({'detail': 'Asset restored successfully.'}, status=status.HTTP_200_OK)
-    except Asset.DoesNotExist:
-        return Response({'detail': 'Asset not found or not soft-deleted.'}, status=status.HTTP_404_NOT_FOUND)
     
 
 
 
-class  AssetActivitiesByAssetView(generics.ListCreateAPIView):
+class MaintenanceActivitiesByEquipmentView(generics.ListCreateAPIView):
     """
-    List all activities for a specific asset or create a new activity.
+    List all activities for a specific equipment or create a new activity.
     """
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['technician', 'activity_type']
 
     def get_queryset(self):
-        asset_id = self.kwargs.get('asset_id')
+        equipment_id = self.kwargs.get('equipment_id')
         queryset = (
-            AssetActivity.objects
-            .filter(asset_id=asset_id)
-            .select_related('asset', 'technician')
+            EquipmentMaintenanceActivity.objects
+            .filter(equipment_id=equipment_id)
+            .select_related('equipment', 'technician')
         )
         
         # Filtering by technician and activity_type
@@ -819,21 +792,21 @@ class  AssetActivitiesByAssetView(generics.ListCreateAPIView):
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
-            return AssetActivityWriteSerializer
-        return AssetActivityReadSerializer
+            return EquipmentMaintenanceActivityWriteSerializer
+        return EquipmentMaintenanceActivityReadSerializer
 
     def perform_create(self, serializer):
-        asset_id = self.kwargs.get('asset_id')
-        asset = get_object_or_404(Asset, id=asset_id)
-        serializer.save(asset=asset)
+        equipment_id = self.kwargs.get('equipment_id')
+        equipment = get_object_or_404(Equipment, id=equipment_id)
+        serializer.save(equipment=equipment)
 
     @swagger_auto_schema(
-        tags=['Asset Activities'],
-        operation_description="Retrieve all activities for a specific asset with optional filtering.",
+        tags=['Equipment Activities'],
+        operation_description="Retrieve all activities for a specific equipment with optional filtering.",
         manual_parameters=[
             openapi.Parameter(
-                'asset_id', openapi.IN_PATH,
-                description="ID of the asset",
+                'equipment_id', openapi.IN_PATH,
+                description="ID of the equipment",
                 type=openapi.TYPE_INTEGER,
                 required=True
             ),
@@ -845,14 +818,14 @@ class  AssetActivitiesByAssetView(generics.ListCreateAPIView):
             ),
             openapi.Parameter(
                 'activity_type', openapi.IN_QUERY,
-                description="Filter by activity type (maintenance, repair, calibration)",
+                description="Filter by activity type (preventive maintenance, repair, calibration)",
                 type=openapi.TYPE_STRING,
-                enum=['maintenance', 'repair', 'calibration'],
+                enum=['preventive maintenance', 'repair', 'calibration'],
                 required=False
             ),
         ],
         responses={
-            200: AssetActivityReadSerializer(many=True),
+            200: EquipmentMaintenanceActivityReadSerializer(many=True),
             401: openapi.Response(
                 description="Unauthorized access.",
                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
@@ -861,16 +834,16 @@ class  AssetActivitiesByAssetView(generics.ListCreateAPIView):
     )
     def get(self, request, *args, **kwargs):
         """
-        Retrieve all activities for a specific asset with optional filtering.
+        Retrieve all activities for a specific equipment with optional filtering.
         """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Asset Activities'],
-        operation_description="Create a new activity for a specific asset.",
-        request_body=AssetActivityWriteSerializer,
+        tags=['Equipment Activities'],
+        operation_description="Create a new activity for a specific equipment.",
+        request_body=EquipmentMaintenanceActivityWriteSerializer,
         responses={
-            201: AssetActivityReadSerializer,
+            201: EquipmentMaintenanceActivityReadSerializer,
             400: openapi.Response(
                 description="Invalid data provided.",
                 examples={"application/json": {"detail": "Validation error details."}}
@@ -883,20 +856,21 @@ class  AssetActivitiesByAssetView(generics.ListCreateAPIView):
     )
     def post(self, request, *args, **kwargs):
         """
-        Create a new activity for a specific asset.
+        Create a new activity for a specific equipment.
         """
         return super().post(request, *args, **kwargs)
 
 
-class AssetActivityDetailByAssetView(generics.RetrieveUpdateDestroyAPIView):
+
+class MaintenanceActivitiesDetailByEquipmentView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Retrieve, update, or delete an activity for a specific asset.
+    Retrieve, update, or delete an activity for a specific equipment.
     """
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        asset_id = self.kwargs.get('asset_id')
-        return AssetActivity.objects.filter(asset_id=asset_id)
+        equipment_id = self.kwargs.get('equipment_id')
+        return EquipmentMaintenanceActivity.objects.filter(equipment_id=equipment_id)
 
     def get_object(self):
         queryset = self.get_queryset()
@@ -905,22 +879,25 @@ class AssetActivityDetailByAssetView(generics.RetrieveUpdateDestroyAPIView):
         return obj
 
     def get_serializer_class(self):
-        return AssetActivityWriteSerializer  # Since PUT handles partial updates
+        if self.request.method == 'GET':
+            return EquipmentMaintenanceActivityReadSerializer
+        else:
+            return EquipmentMaintenanceActivityWriteSerializer
 
     def put(self, request, *args, **kwargs):
         """
-        Update an activity for a specific asset. Supports partial updates.
+        Update an activity for a specific equipment. Supports partial updates.
         """
         kwargs['partial'] = True  # Allow partial updates
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Asset Activities'],
-        operation_description="Retrieve an activity for a specific asset.",
+        tags=['Equipment Activities'],
+        operation_description="Retrieve an activity for a specific equipment.",
         manual_parameters=[
             openapi.Parameter(
-                'asset_id', openapi.IN_PATH,
-                description="ID of the asset",
+                'equipment_id', openapi.IN_PATH,
+                description="ID of the equipment",
                 type=openapi.TYPE_INTEGER,
                 required=True
             ),
@@ -932,7 +909,10 @@ class AssetActivityDetailByAssetView(generics.RetrieveUpdateDestroyAPIView):
             ),
         ],
         responses={
-            200: AssetActivityReadSerializer,
+            200: openapi.Response(
+                description="Activity retrieved successfully.",
+                schema=EquipmentMaintenanceActivityReadSerializer,
+            ),
             404: openapi.Response(
                 description="Activity not found.",
                 examples={"application/json": {"detail": "Not found."}}
@@ -945,16 +925,19 @@ class AssetActivityDetailByAssetView(generics.RetrieveUpdateDestroyAPIView):
     )
     def get(self, request, *args, **kwargs):
         """
-        Retrieve an activity for a specific asset.
+        Retrieve an activity for a specific equipment.
         """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Asset Activities'],
-        operation_description="Update an activity for a specific asset. Supports partial updates.",
-        request_body=AssetActivityWriteSerializer,
+        tags=['Equipment Activities'],
+        operation_description="Update an activity for a specific equipment. Supports partial updates.",
+        request_body=EquipmentMaintenanceActivityWriteSerializer,
         responses={
-            200: AssetActivityReadSerializer,
+            200: openapi.Response(
+                description="Activity updated successfully.",
+                schema=EquipmentMaintenanceActivityReadSerializer,
+            ),
             400: openapi.Response(
                 description="Invalid data provided.",
                 examples={"application/json": {"detail": "Validation error details."}}
@@ -971,14 +954,14 @@ class AssetActivityDetailByAssetView(generics.RetrieveUpdateDestroyAPIView):
     )
     def put(self, request, *args, **kwargs):
         """
-        Update an activity for a specific asset. Supports partial updates.
+        Update an activity for a specific equipment. Supports partial updates.
         """
-        kwargs['partial'] = True  # Allow partial updates
+        kwargs['partial'] = True
         return super().put(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Asset Activities'],
-        operation_description="Delete an activity for a specific asset.",
+        tags=['Equipment Activities'],
+        operation_description="Delete an activity for a specific equipment.",
         responses={
             204: openapi.Response(description="Activity deleted successfully."),
             404: openapi.Response(
@@ -993,34 +976,35 @@ class AssetActivityDetailByAssetView(generics.RetrieveUpdateDestroyAPIView):
     )
     def delete(self, request, *args, **kwargs):
         """
-        Delete an activity for a specific asset.
+        Delete an activity for a specific equipment.
         """
         return super().delete(request, *args, **kwargs)
 
 
 
-class AssetActivityListCreateView(generics.ListCreateAPIView):
+
+class MaintenanceActivitiesListCreateView(generics.ListCreateAPIView):
     """
-    List all asset activities or create a new activity.
+    List all equipment activities or create a new activity.
     """
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         include_deleted = self.request.query_params.get('include_deleted', 'false').lower()
         if include_deleted == 'true':
-            queryset = AssetActivity.all_objects.all()
+            queryset = EquipmentMaintenanceActivity.all_objects.all()
         else:
-            queryset = AssetActivity.objects.all()
+            queryset = EquipmentMaintenanceActivity.objects.all()
         return queryset
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
-            return AssetActivityWriteSerializer
-        return AssetActivityReadSerializer
+            return EquipmentMaintenanceActivityWriteSerializer
+        return EquipmentMaintenanceActivityReadSerializer
 
     @swagger_auto_schema(
-        tags=['Asset Activities'],
-        operation_description="Retrieve a list of all asset activities.",
+        tags=['Equipment Activities'],
+        operation_description="Retrieve a list of all equipment activities.",
         manual_parameters=[
             openapi.Parameter(
                 'include_deleted', openapi.IN_QUERY,
@@ -1030,7 +1014,7 @@ class AssetActivityListCreateView(generics.ListCreateAPIView):
             ),
         ],
         responses={
-            200: AssetActivityReadSerializer(many=True),
+            200: EquipmentMaintenanceActivityReadSerializer(many=True),
             401: openapi.Response(
                 description="Unauthorized access.",
                 examples={
@@ -1041,40 +1025,37 @@ class AssetActivityListCreateView(generics.ListCreateAPIView):
     )
     def get(self, request, *args, **kwargs):
         """
-        Retrieve a list of all asset activities.
+        Retrieve a list of all equipment activities.
         """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Asset Activities'],
-        operation_description="Create a new asset activity.",
-        request_body=AssetActivityWriteSerializer,
+        tags=['Equipment Activities'],
+        operation_description="Create a new equipment activity.",
+        request_body=EquipmentMaintenanceActivityWriteSerializer,
         responses={
-            201: AssetActivityReadSerializer,
+            201: EquipmentMaintenanceActivityReadSerializer,
             400: openapi.Response(
                 description="Invalid data provided.",
-                examples={
-                    "application/json": {"detail": "Validation error details."}
-                }
+                examples={"application/json": {"detail": "Validation error details."}}
             ),
             401: openapi.Response(
                 description="Unauthorized access.",
-                examples={
-                    "application/json": {"detail": "Authentication credentials were not provided."}
-                }
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
             )
         }
     )
     def post(self, request, *args, **kwargs):
         """
-        Create a new asset activity.
+        Create a new equipment activity.
         """
         return super().post(request, *args, **kwargs)
 
 
-class AssetActivityDetailView(generics.RetrieveUpdateDestroyAPIView):
+
+class MaintenanceActivitiesDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
-    Retrieve, update, or delete an asset activity.
+    Retrieve, update, or delete an equipment activity.
     """
     lookup_field = 'pk'
 
@@ -1088,19 +1069,19 @@ class AssetActivityDetailView(generics.RetrieveUpdateDestroyAPIView):
     def get_queryset(self):
         include_deleted = self.request.query_params.get('include_deleted', 'false').lower()
         if include_deleted == 'true':
-            queryset = AssetActivity.all_objects.all()
+            queryset = EquipmentMaintenanceActivity.all_objects.all()
         else:
-            queryset = AssetActivity.objects.all()
+            queryset = EquipmentMaintenanceActivity.objects.all()
         return queryset
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:
-            return AssetActivityWriteSerializer
-        return AssetActivityReadSerializer
+            return EquipmentMaintenanceActivityWriteSerializer
+        return EquipmentMaintenanceActivityReadSerializer
 
     @swagger_auto_schema(
-        tags=['Asset Activities'],
-        operation_description="Retrieve an asset activity by its primary key.",
+        tags=['Equipment Activities'],
+        operation_description="Retrieve an equipment activity by its primary key.",
         manual_parameters=[
             openapi.Parameter(
                 'include_deleted', openapi.IN_QUERY,
@@ -1110,32 +1091,32 @@ class AssetActivityDetailView(generics.RetrieveUpdateDestroyAPIView):
             ),
             openapi.Parameter(
                 'pk', openapi.IN_PATH,
-                description="Primary key of the asset activity",
+                description="Primary key of the equipment activity",
                 type=openapi.TYPE_INTEGER,
                 required=True
             )
         ],
         responses={
-            200: AssetActivityReadSerializer,
+            200: openapi.Response(
+                description="Equipment activity retrieved successfully.",
+                schema=EquipmentMaintenanceActivityReadSerializer
+            ),
             404: openapi.Response(
-                description="Asset activity not found.",
-                examples={
-                    "application/json": {"detail": "Not found."}
-                }
+                description="Equipment activity not found.",
+                examples={"application/json": {"detail": "Not found."}}
             ),
             401: openapi.Response(
                 description="Unauthorized access.",
-                examples={
-                    "application/json": {"detail": "Authentication credentials were not provided."}
-                }
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
             )
         }
     )
     def get(self, request, *args, **kwargs):
         """
-        Retrieve an asset activity by its primary key.
+        Retrieve an equipment activity by its primary key.
         """
         return super().get(request, *args, **kwargs)
+
 
 
 
@@ -1146,8 +1127,8 @@ class MaintenanceScheduleListCreateView(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['frequency', 'is_active']
-    search_fields = ['title', 'description', 'asset__name']
-    ordering_fields = ['start_datetime', 'end_datetime']
+    search_fields = ['title', 'description', 'equipment__name']  
+    ordering_fields = ['start_date', 'end_date']  # Updated ordering fields
 
     def get_queryset(self):
         """
@@ -1157,7 +1138,7 @@ class MaintenanceScheduleListCreateView(generics.ListCreateAPIView):
         if IsAdminOrSuperAdmin().has_permission(self.request, self):
             return MaintenanceSchedule.objects.all()
         else:
-            return MaintenanceSchedule.objects.filter(Q(technician=user) | Q(is_general=True))
+            return MaintenanceSchedule.objects.filter(Q(technician=user) | Q(for_all_equipment=True))
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -1219,8 +1200,7 @@ class MaintenanceScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
         if IsAdminOrSuperAdmin().has_permission(self.request, self):
             return MaintenanceSchedule.objects.all()
         else:
-            return MaintenanceSchedule.objects.filter(Q(technician=user) | Q(is_general=True))
-
+            return MaintenanceSchedule.objects.filter(Q(technician=user) | Q(for_all_equipment=True))
 
     def get_serializer_class(self):
         if self.request.method in ['PUT', 'PATCH']:

@@ -1,10 +1,9 @@
 from django.core.management.base import BaseCommand
 from faker import Faker
-from accounts.models import CustomUser  # Your Custom User model
-from assets.models import Department, Asset
+from accounts.models import CustomUser  # or use get_user_model()
+from equipment.models import Department, Equipment
 from django.utils import timezone
 import random
-from datetime import datetime
 
 class Command(BaseCommand):
     help = 'Populate the database with meaningful medical equipment for predefined departments'
@@ -24,14 +23,14 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR('User with email memis@gmail.com does not exist.'))
             return
 
-        # Predefined medical equipment for assets with department
+        # Predefined medical equipment with associated department names
         medical_equipment = [
             {"name": "Urodynamic System", "device_type": "Diagnostic Equipment", "department": "Urology"},
             {"name": "Cystoscope", "device_type": "Endoscopic Device", "department": "Urology"},
             {"name": "Lithotripter", "device_type": "Therapeutic Device", "department": "Urology"},
             {"name": "Dialysis Machine", "device_type": "Renal Care", "department": "Urology"},
             {"name": "Bladder Scanner", "device_type": "Diagnostic Imaging", "department": "Urology"},
-            
+
             {"name": "Tissue Processor", "device_type": "Lab Equipment", "department": "Pathology"},
             {"name": "Cryostat", "device_type": "Lab Equipment", "department": "Pathology"},
             {"name": "Hematology Analyzer", "device_type": "Diagnostic Lab Equipment", "department": "Pathology"},
@@ -57,52 +56,47 @@ class Command(BaseCommand):
             {"name": "Neurological Hammer", "device_type": "Diagnostic Tool", "department": "Neurology"}
         ]
 
-        # Verify that the predefined departments are in the database
-        if len(departments) != 5:
+        # Verify that the predefined departments exist
+        if departments.count() != 5:
             self.stdout.write(self.style.ERROR('Not all predefined departments exist in the database.'))
             return
 
-        # Ensure each department gets 5 meaningful assets
-        self.stdout.write('Creating assets...')
+        self.stdout.write('Creating equipment...')
         equipment_index = 0
         total_equipment = len(medical_equipment)
-        
         manufacturer_list = ["MedEquip", "HealthTech", "SurgiTech", "CardioLife", "RespirTech", "NeonatalCare", "InfuCare"]
 
         for department in departments:
-            for _ in range(5):  # 5 assets per department
-                equipment = medical_equipment[equipment_index]
+            for _ in range(5):  # Create 5 equipment entries per department
+                equipment_data = medical_equipment[equipment_index]
                 equipment_index = (equipment_index + 1) % total_equipment
-                
-                embossment_id = f"{equipment['name'].split()[0][:3].upper()}-{random.randint(1, 999):03d}"
-                serial_number = f"SN{random.randint(1000000000, 9999999999)}"
-                operational_status = random.choice(
-                    [Asset.OPERATIONAL_STATUS.active, Asset.OPERATIONAL_STATUS.inactive, 
-                     Asset.OPERATIONAL_STATUS.under_maintenance, Asset.OPERATIONAL_STATUS.decommissioned]
-                )
-                manufacturer = random.choice(manufacturer_list)
-                model = f"{equipment['name'].split()[0][:3].upper()}-{random.randint(1000, 9999)}"
-                embossment_date = fake.date_this_decade()
-                manufacturing_date = fake.date_this_decade()
-                commission_date = fake.date_this_decade()
 
-                asset = Asset.objects.create(
-                    name=equipment["name"],
-                    device_type=equipment["device_type"],
+                # Generate a unique embossment_id and serial_number
+                embossment_id = f"{equipment_data['name'].split()[0][:3].upper()}-{random.randint(1, 999):03d}"
+                serial_number = f"SN{random.randint(1000000000, 9999999999)}"
+                operational_status = random.choice([
+                    Equipment.OPERATIONAL_STATUS.functional,
+                    Equipment.OPERATIONAL_STATUS.under_maintenance,
+                    Equipment.OPERATIONAL_STATUS.decommissioned
+                ])
+                manufacturer = random.choice(manufacturer_list)
+                model = f"{equipment_data['name'].split()[0][:3].upper()}-{random.randint(1000, 9999)}"
+                manufacturing_date = fake.date_this_decade()
+
+                equipment = Equipment.objects.create(
+                    name=equipment_data["name"],
+                    device_type=equipment_data["device_type"],
                     embossment_id=embossment_id,
                     serial_number=serial_number,
                     operational_status=operational_status,
                     department=department,
-                    quantity=random.randint(1, 10),
                     model=model,
                     manufacturer=manufacturer,
-                    embossment_date=embossment_date,
                     manufacturing_date=manufacturing_date,
-                    description=f"{equipment['name']} used in {equipment['device_type']} applications.",
-                    commission_date=commission_date,
-                    added_by=user,
-                    status='published'  # Setting status as published
+                    description=f"{equipment_data['name']} used in {equipment_data['device_type']} applications.",
+                    decommission_date=None,
+                    added_by=user
                 )
-                self.stdout.write(self.style.SUCCESS(f'Asset {asset.name} created for {department.name}'))
+                self.stdout.write(self.style.SUCCESS(f'Equipment {equipment.name} created for {department.name}'))
 
-        self.stdout.write(self.style.SUCCESS('Database populated successfully with meaningful assets!'))
+        self.stdout.write(self.style.SUCCESS('Database populated successfully with meaningful equipment!'))

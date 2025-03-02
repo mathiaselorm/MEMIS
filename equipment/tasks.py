@@ -19,7 +19,7 @@ def send_maintenance_reminder(schedule_id, occurrence):
     Send a maintenance reminder email and notification.
     """
     try:
-        schedule = MaintenanceSchedule.objects.select_related('technician', 'asset').get(id=schedule_id)
+        schedule = MaintenanceSchedule.objects.select_related('technician', 'equipment').get(id=schedule_id)
     except MaintenanceSchedule.DoesNotExist:
         logger.error(f"Failed to send reminder: MaintenanceSchedule with ID {schedule_id} does not exist.")
         return
@@ -37,10 +37,10 @@ def send_maintenance_reminder(schedule_id, occurrence):
             'schedule': schedule,
             'occurrence': occurrence,
             'current_year': timezone.now().year,  # Ensure you have the current year
-            'asset_name': schedule.asset.name if schedule.asset else "General Maintenance",
+            'equipment_name': schedule.equipment.name if schedule.equipment else "For All Equipment",
 
         }
-        html_content = render_to_string('assets/maintenance_reminder.html', context)
+        html_content = render_to_string('equipment/maintenance_reminder.html', context)
         text_content = strip_tags(html_content)
 
         # Send email

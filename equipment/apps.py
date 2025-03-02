@@ -1,14 +1,14 @@
 from django.apps import AppConfig
 
 
-class AssetsConfig(AppConfig):
+class EquipmentConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
-    name = 'assets'
+    name = 'equipment'
 
     def ready(self):
-        import assets.signals
+        import equipment.signals
         from actstream import registry
 
         
-        from .models import Asset
-        registry.register(Asset)
+        from .models import Equipment
+        registry.register(Equipment)

@@ -17,6 +17,11 @@ def send_maintenance_notification(sender, instance, created, **kwargs):
             message = f"New maintenance schedule created: {instance.title}"
         else:
             message = f"Maintenance schedule updated: {instance.title}"
+            
+        # Ensure technician exists before proceeding
+        if not instance.technician:
+            logger.warning("MaintenanceSchedule technician is None; skipping notification.")
+            return
 
         notification = Notification.objects.create(
             user=instance.technician,
@@ -52,6 +57,7 @@ def schedule_reminder_task(sender, instance, created, **kwargs):
     occurrences = instance.get_next_occurrences()
     
     if not occurrences:
+        logger.info("No upcoming occurrences found; skipping reminder scheduling.")
         return  # No occurrences to schedule
 
     next_occurrence = occurrences[0]
@@ -60,10 +66,11 @@ def schedule_reminder_task(sender, instance, created, **kwargs):
     reminder_time = next_occurrence - timedelta(hours=24)
     logger.info(f"Scheduling task for {next_occurrence}, reminder time: {reminder_time}")
 
-    # Use apply_async to schedule the task dynamically
-    send_maintenance_reminder.apply_async(
-        args=[instance.id, next_occurrence],  # Pass schedule id and occurrence time
-        eta=reminder_time  # Set the ETA for 24 hours before the occurrence
-    )
-    
-    logger.info("Task scheduled successfully.")
+    try:
+        send_maintenance_reminder.apply_async(
+            args=[instance.id, next_occurrence],
+            eta=reminder_time
+        )
+        logger.info("Reminder task scheduled successfully.")
+    except Exception as e:
+        logger.error(f"Error scheduling reminder task: {e}")

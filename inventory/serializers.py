@@ -1,66 +1,23 @@
 from rest_framework import serializers
-from .models import Category, Item
-
-# --------- CATEGORY SERIALIZERS --------- #
-
-class CategoryReadSerializer(serializers.ModelSerializer):
-    """
-    Serializer for reading Category instances.
-    """
-    class Meta:
-        model = Category
-        fields = ['id', 'slug', 'name', 'description', 'created', 'modified', 'is_removed', 'status']
-
-
-class CategoryWriteSerializer(serializers.ModelSerializer):
-    """
-    Serializer for creating/updating Category instances.
-    """
-    status = serializers.ChoiceField(choices=Category.STATUS, default=Category.STATUS.draft)
-
-    class Meta:
-        model = Category
-        fields = ['name', 'description', 'status']
-
-    def validate_name(self, value):
-        """
-        Validate that the category name is unique when the status is published.
-        """
-        status = self.initial_data.get('status', self.instance.status if self.instance else None)
-        if status == Category.STATUS.published:
-            qs = Category.objects.filter(name=value, status=Category.STATUS.published)
-            if self.instance:
-                qs = qs.exclude(id=self.instance.id)
-            if qs.exists():
-                raise serializers.ValidationError("A published category with this name already exists.")
-        return value
-
-    def create(self, validated_data):
-        return Category.objects.create(**validated_data)
-
-    def update(self, instance, validated_data):
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
-
-# --------- ITEM SERIALIZERS --------- #
+from .models import Item
 
 class ItemReadSerializer(serializers.ModelSerializer):
     """
     Serializer for reading Item instances.
     """
-    category_name = serializers.ReadOnlyField(source='category.name')
     stock_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Item
-        fields = ['id', 'category_name', 'descriptive_name', 'manufacturer', 'model_number',
-                  'serial_number', 'current_stock', 'location', 'is_removed', 'created', 'modified', 'stock_status', 'status']
+        fields = [
+            'id', 'category', 'name', 'item_code', 
+            'description', 'quantity', 'location', 
+            'stock_status', 'created', 'modified'
+        ]
 
     def get_stock_status(self, obj):
         """
-        Returns the stock status based on current stock and soft deletion state.
+        Returns the stock status based on current stock.
         """
         return obj.stock_status
 
@@ -69,33 +26,28 @@ class ItemWriteSerializer(serializers.ModelSerializer):
     """
     Serializer for creating/updating Item instances.
     """
-    category = serializers.PrimaryKeyRelatedField(queryset=Category.all_objects.all())
-    status = serializers.ChoiceField(choices=Item.STATUS, default=Item.STATUS.draft)
 
     class Meta:
         model = Item
-        fields = ['category', 'descriptive_name', 'manufacturer', 'model_number',
-                  'serial_number', 'current_stock', 'location', 'status']
+        fields = ['category', 'name', 'item_code', 'description', 'quantity', 'location']
 
-    def validate_current_stock(self, value):
+    def validate_quantity(self, value):
         """
-        Ensure current stock is never less than zero.
+        Ensure the quantity is never less than zero.
         """
         if value < 0:
             raise serializers.ValidationError("Current stock cannot be negative.")
         return value
 
-    def validate_serial_number(self, value):
+    def validate_item_code(self, value):
         """
-        Validate that the serial number is unique when the status is published.
+        Ensure the item code is unique.
         """
-        status = self.initial_data.get('status', self.instance.status if self.instance else None)
-        if status == Item.STATUS.published:
-            qs = Item.objects.filter(serial_number=value, status=Item.STATUS.published)
-            if self.instance:
-                qs = qs.exclude(id=self.instance.id)
-            if qs.exists():
-                raise serializers.ValidationError("A published item with this serial number already exists.")
+        qs = Item.objects.filter(item_code=value)
+        if self.instance:
+            qs = qs.exclude(id=self.instance.id)
+        if qs.exists():
+            raise serializers.ValidationError("Item code already exists.")
         return value
 
     def create(self, validated_data):
@@ -106,5 +58,3 @@ class ItemWriteSerializer(serializers.ModelSerializer):
             setattr(instance, attr, value)
         instance.save()
         return instance
-
-
