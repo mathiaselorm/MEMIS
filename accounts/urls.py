@@ -4,14 +4,21 @@ from django_rest_passwordreset.views import (
     ResetPasswordValidateToken,
     # ResetPasswordRequestToken
 )
+from rest_framework_simplejwt.views import (
+    TokenRefreshView,
+    TokenVerifyView,
+)
+
 
 from . import views
 
 urlpatterns = [
     # Authentication endpoints
     path('login/', views.CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('logout/', views.logout_view, name='logout'),
-    path('login/token-refresh/', views.CustomTokenRefreshView.as_view(), name='token_refresh'),
+    path('login/token-refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('login/token-verify/', TokenVerifyView.as_view(), name='token_verify'),
+    
+    # Password reset endpoints
     path('password-reset/request/', views.CustomPasswordResetRequestView.as_view(), name='password_reset'),
     path('password-reset/confirm/', ResetPasswordConfirm.as_view(), name='password_reset_confirm'),
     path('password-reset/validate/', ResetPasswordValidateToken.as_view(), name='password_reset_validate'),

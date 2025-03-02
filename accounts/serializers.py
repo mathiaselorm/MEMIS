@@ -183,54 +183,25 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 
 
-
-
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
-    Allows the inclusion of a 'remember_me' flag in the token request
-    and extends the token lifetime if set.
+    Custom JWT token serializer to include user data.
     """
-    remember_me = serializers.BooleanField(required=False, default=False)
-
     def validate(self, attrs):
         data = super().validate(attrs)
+        refresh = self.get_token(self.user)
 
-        # Get the 'remember_me' field from the request data
-        request = self.context.get('request')
-        remember_me = request.data.get('remember_me', False) if request else False
+        data['refresh'] = str(refresh)
+        data['access'] = str(refresh.access_token)
 
-        user = self.user
-
-        # Build token pair
-        refresh = self.get_token(user)
-        access_token = refresh.access_token
-
-        # Store "Remember Me" flag
-        refresh['remember_me'] = remember_me
-
-        # If "remember me" is set, extend token lifetime as needed
-        if remember_me:
-            # e.g., extend refresh token to 5 days
-            refresh.set_exp(lifetime=timedelta(days=5))
-
-        # Optionally add custom claims to tokens
-        # if you have a method like _add_custom_claims:
-        # self._add_custom_claims(refresh, user)
-        # self._add_custom_claims(access_token, user)
-
-        data.update({
-            'access': str(access_token),
-            'refresh': str(refresh),
-            'user': {
-                'id': user.id,
-                'email': user.email,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
-                'user_role': user.get_user_role_display()
-            }
-        })
+        # Add extra responses here
+        data['user'] = {
+            'id': self.user.id,
+            'email': self.user.email,
+            'first_name': self.user.first_name,
+            'last_name': self.user.last_name,
+            'user_role': self.user.get_user_role_display(),}
         return data
-
     
 
 class PasswordChangeSerializer(serializers.Serializer):
