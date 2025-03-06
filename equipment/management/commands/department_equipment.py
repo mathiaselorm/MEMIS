@@ -18,9 +18,9 @@ class Command(BaseCommand):
 
         # Fetch the user with the specific email to use as 'added_by'
         try:
-            user = CustomUser.objects.get(email="memis@gmail.com")
+            user = CustomUser.objects.get(email="mathiaselorm@gmail.com")
         except CustomUser.DoesNotExist:
-            self.stdout.write(self.style.ERROR('User with email memis@gmail.com does not exist.'))
+            self.stdout.write(self.style.ERROR('User with email mathiaselorm@gmail.com does not exist.'))
             return
 
         # Predefined medical equipment with associated department names
