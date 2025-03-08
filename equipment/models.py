@@ -49,13 +49,29 @@ class Supplier(TimeStampedModel):
 
 class Equipment(TimeStampedModel):
     
+    DEVICE_TYPE = Choices(
+        ("diagnostic", "Diagnostic Device"),
+        ("therapeutic", "Therapeutic Device"),
+        ("life_support", "Life-Support Device"),
+        ("monitoring", "Monitoring Device"),
+        ("surgical", "Surgical Device"),
+        ("radiology", "Radiology Device"),
+        ("lab", "Laboratory Device"),  
+        ("other", "Other Devices")
+    )
+    
     OPERATIONAL_STATUS = Choices(
         ("functional", "Functional"),
         ('under_maintenance', 'Under Maintenance'),
         ('decommissioned', 'Decommissioned')
     )
     name = models.CharField(max_length=255)
-    device_type = models.CharField(max_length=255, blank=True, null=True, db_index=True)
+    device_type = models.CharField(
+        max_length=255,
+        choices=DEVICE_TYPE, 
+        default=DEVICE_TYPE.other,
+        db_index=True
+    )
     embossment_id = models.CharField(max_length=100, unique=True)
     department = models.ForeignKey(
         Department,
