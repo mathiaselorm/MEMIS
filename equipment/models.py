@@ -62,8 +62,8 @@ class Equipment(TimeStampedModel):
     
     OPERATIONAL_STATUS = Choices(
         ("functional", "Functional"),
-        ('under_maintenance', 'Under Maintenance'),
-        ('decommissioned', 'Decommissioned')
+        ('in_process', 'In Process'),
+        ('downtime', 'Downtime'),
     )
     name = models.CharField(max_length=255)
     device_type = models.CharField(
