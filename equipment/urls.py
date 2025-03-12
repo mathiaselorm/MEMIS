@@ -16,10 +16,10 @@ urlpatterns = [
     path('equipment/total/', views.TotalEquipmentView.as_view(), name='total-equipment'),
     
     # Equipment status breakdown (functional, under maintenance, etc.)
-    path('equipment/status-summary/', views.EquipmentStatusSummaryView.as_view(), name='equipment-status-summary'),
+    path('equipment-status/summary/', views.EquipmentStatusSummaryView.as_view(), name='equipment-status-summary'),
         
     # Equipment type breakdown (diagnostic, therapeutic, etc.)
-    path('equipment/type-summary/', views.EquipmentTypeSummaryView.as_view(), name='equipment-type-summary'),
+    path('equipment-type/summary/', views.EquipmentTypeSummaryView.as_view(), name='equipment-type-summary'),
 
     
     # Maintenance activity overview (daily counts over a chosen period)
