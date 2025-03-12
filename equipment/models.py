@@ -13,37 +13,17 @@ from dateutil import rrule
 User = get_user_model()
 
 
-class Department(TimeStampedModel):
-    name = models.CharField(max_length=255, unique=True, db_index=True)
-    slug = AutoSlugField(
-        populate_from='name', 
-        max_length=255,
-        unique=True,
-    )
-    head = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        related_name='head_of_department',
-        blank=True,
-        null=True
-    )
-    contact_phone = models.CharField(max_length=20, blank=True, null=True)
-    contact_email = models.EmailField(blank=True, null=True)
-
-    def __str__(self):
-        return self.name or 'Unknown Department'
 
 
 
 class Supplier(TimeStampedModel):
-    name = models.CharField(max_length=255, unique=True)
-    email = models.EmailField(max_length=255, unique=True)
+    company_name = models.CharField(max_length=255, unique=True)
+    company_email = models.EmailField(max_length=255, unique=True)
     contact = models.CharField(max_length=20, blank=True, null=True)
-    office_address = models.TextField(blank=True, null=True)
     website = models.URLField(blank=True, null=True)
 
     def __str__(self):
-        return self.name or "Unknown Supplier"
+        return self.company_name or "Unknown Supplier"
 
 
 
@@ -53,17 +33,38 @@ class Equipment(TimeStampedModel):
         ("diagnostic", "Diagnostic Device"),
         ("therapeutic", "Therapeutic Device"),
         ("life_support", "Life-Support Device"),
+        ("lab", "Laboratory Analytic Device"),  
         ("monitoring", "Monitoring Device"),
-        ("surgical", "Surgical Device"),
-        ("radiology", "Radiology Device"),
-        ("lab", "Laboratory Device"),  
+        ("hospital_industrial", "Hospital & Industrial Equipment"),
+        ("safety_equipment", "Safety Equipment"),
         ("other", "Other Devices")
     )
     
+    DEPARTMENT = Choices(
+        ('emergency', 'Emergency Department'),
+        ('opd', 'Outpatient Department'),
+        ('inpatient', 'Inpatient Department'),
+        ('maternity', 'Maternity Ward'),
+        ('laboratory', 'Laboratory Department'),
+        ('pediatric', 'Pediatric  Department'),
+        ('icu', 'Intensive Care Unit'),
+        ('radiology', 'Radiology Department'),
+        ('oncology', 'Oncology Department'),
+        ('physiotherapy', 'Physiotherapy Department'),
+        ('surgical', 'Surgical Department'),
+        ('dental', 'Dental Clinic'),
+        ('cardiology', 'Cardiology Department'),
+        ('orthopedic', 'Orthopedic Department'),
+        ('urology', 'Urology Department'),
+        ('neurology', 'Neurology Department'),
+        ('gynecology', 'Gynecology Department'),
+    )
+        
     OPERATIONAL_STATUS = Choices(
         ("functional", "Functional"),
-        ('in_process', 'In Process'),
-        ('downtime', 'Downtime'),
+        ("non_functional", "Non-Functional"),
+        ('under_maintenance', 'Under Maintenance'),
+        ('decommissioned', 'Decommissioned'),
     )
     name = models.CharField(max_length=255)
     device_type = models.CharField(
@@ -72,12 +73,8 @@ class Equipment(TimeStampedModel):
         default=DEVICE_TYPE.other,
         db_index=True
     )
-    embossment_id = models.CharField(max_length=100, unique=True)
-    department = models.ForeignKey(
-        Department,
-        related_name='equipment',
-        on_delete=models.CASCADE
-    )
+    equipment_id = models.CharField(max_length=20, unique=True)
+    department = models.CharField(max_length=255, choices=DEPARTMENT, db_index=True)
 
     operational_status = models.CharField(
         max_length=20,
@@ -104,6 +101,14 @@ class Equipment(TimeStampedModel):
         folder='equipment',
         unique_filename=True
     )
+    manual = CloudinaryField(
+        'manual',
+        blank=True,
+        null=True,
+        resource_type='raw',
+        folder='equipment',
+        unique_filename=True
+    )
     decommission_date = models.DateField(blank=True, null=True)
     added_by = models.ForeignKey(
         User,
@@ -118,12 +123,50 @@ class Equipment(TimeStampedModel):
         verbose_name_plural = _('Equipment')
         indexes = [
             models.Index(fields=['name', 'department', 'operational_status']),
-            models.Index(fields=['embossment_id']),
+            models.Index(fields=['equipment_id']),
         ]
 
     
     def __str__(self):
         return f"{self.name} (Added by: {self.added_by.get_full_name() if self.added_by else 'Unknown'})"
+    
+    def _generate_equipment_id(self):
+        """
+        Generate a 12-character human-readable equipment ID by:
+         1. Taking the first 3 alphanumeric characters from the manufacturer (uppercased, pad with 'X' if needed).
+         2. Taking the first 3 alphanumeric characters from the model (uppercased, pad with 'X' if needed).
+         3. Taking the last 6 alphanumeric characters from the serial number (uppercased, pad on the left with '0' if needed).
+        """
+        if not self.manufacturer or not self.model or not self.serial_number:
+            raise ValidationError("Manufacturer, model, and serial number are required to generate Equipment ID.")
+
+        # Process manufacturer: remove non-alphanumeric characters, uppercase, and take first 3 characters (pad with 'X' if needed)
+        manufacturer_clean = ''.join(ch for ch in self.manufacturer.strip() if ch.isalnum()).upper()
+        manufacturer_code = manufacturer_clean[:3].ljust(3, 'X')
+
+        # Process model: remove non-alphanumeric characters, uppercase, and take first 3 characters (pad with 'X' if needed)
+        model_clean = ''.join(ch for ch in self.model.strip() if ch.isalnum()).upper()
+        model_code = model_clean[:3].ljust(3, 'X')
+
+        # Process serial number: remove non-alphanumeric characters, uppercase, and take last 6 characters (pad on the left with '0' if needed)
+        serial_clean = ''.join(ch for ch in self.serial_number.strip() if ch.isalnum()).upper()
+        serial_code = serial_clean[-6:].rjust(6, '0')
+
+        # Combine the parts to form the 12-character equipment_id
+        return manufacturer_code + model_code + serial_code
+
+    def save(self, *args, **kwargs):
+        # Only generate the equipment_id if it hasn't been set.
+        if not self.equipment_id:
+            base_id = self._generate_equipment_id()
+            candidate = base_id
+            counter = 1
+            # Check for collisions and append a suffix (e.g., "-1") if needed.
+            while Equipment.objects.filter(equipment_id=candidate).exclude(pk=self.pk).exists():
+                candidate = f"{base_id}-{counter}"
+                counter += 1
+            self.equipment_id = candidate
+        super().save(*args, **kwargs) 
 
 
 class EquipmentMaintenanceActivity(TimeStampedModel):
@@ -388,6 +431,28 @@ class MaintenanceSchedule(TimeStampedModel):
         # Look up to 5 years ahead for the next occurrence
         next_occurrences = rule.between(now, now + timedelta(days=365 * 5), inc=False)
         return next_occurrences[0] if next_occurrences else None
+    
+    def get_occurrences_in_range(self, start, end):
+        """
+        Return all occurrence datetimes for this schedule that fall within the [start, end] range.
+        """
+        # For a one-time schedule, if start_date is within the range, return it.
+        if self.frequency == 'once':
+            if start <= self.start_date <= end:
+                return [self.start_date]
+            return []
+
+        # For recurring schedules, use rrule to compute occurrences between start and end.
+        freq, effective_interval = self.get_rrule_params()
+        rule = rrule.rrule(
+            freq,
+            dtstart=self.start_date,
+            interval=effective_interval,
+            until=self.recurring_end
+        )
+        occurrences = rule.between(start, end, inc=True)
+        
+        return occurrences
 
     def save(self, *args, **kwargs):
         """
@@ -395,3 +460,8 @@ class MaintenanceSchedule(TimeStampedModel):
         """
         self.next_occurrence = self.compute_next_occurrence()
         super().save(*args, **kwargs)
+        
+        
+            
+        
+        

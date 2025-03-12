@@ -12,6 +12,7 @@ class Item(TimeStampedModel):
         ('maintenance', 'Maintenance Tool'),
         ('critical', 'Critical Component'),
         ('consumable', 'Consumables & Accessories'),
+        ('miscellaneous', 'Miscellaneous'),
     ]
     name = models.CharField(max_length=255, db_index=True)
     item_code = models.CharField(max_length=100, unique=True)

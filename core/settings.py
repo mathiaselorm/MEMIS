@@ -108,7 +108,7 @@ PASSWORD_RESET_TIMEOUT = 60 * 60  # 1 hour in seconds
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "https://memis.vercel.app",
-    "https://memis-project.vercel.app/",
+    "https://memis-project.vercel.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
@@ -132,7 +132,7 @@ CSRF_COOKIE_NAME = "csrftoken"  # Name of the CSRF token in cookies
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "https://memis.vercel.app",
-    "https://memis-project.vercel.app/",
+    "https://memis-project.vercel.app",
     "http://127.0.0.1:8000",
     "https://memis-90605b282646.herokuapp.com"
 ]  
@@ -167,9 +167,7 @@ INSTALLED_APPS = [
     'accounts.apps.AccountsConfig',
     'equipment.apps.EquipmentConfig',
     'inventory.apps.InventoryConfig',
-    'notification.apps.NotificationConfig',
-    'activity_stream'
-    
+    'notification.apps.NotificationConfig',    
 ]
 
 MIDDLEWARE = [

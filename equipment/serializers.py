@@ -4,60 +4,9 @@ from django.db import transaction
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from actstream import action
-from .models import Equipment, Department, EquipmentMaintenanceActivity, MaintenanceSchedule, Supplier
+from .models import Equipment, EquipmentMaintenanceActivity, MaintenanceSchedule, Supplier
 
 User = get_user_model()
-
-
-# -------------------------------
-# DEPARTMENT SERIALIZERS
-# -------------------------------
-class DepartmentWriteSerializer(serializers.ModelSerializer):
-    head = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), required=False)
-
-    class Meta:
-        model = Department
-        fields = ['name', 'head', 'contact_phone', 'contact_email']
-
-    def validate_name(self, value):
-        if Department.objects.filter(name=value).exists():
-            raise serializers.ValidationError("A department with this name already exists.")
-        return value
-
-    def create(self, validated_data):
-        department = super().create(validated_data)
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            action.send(request.user, verb='created department', target=department)
-        return department
-
-    def update(self, instance, validated_data):
-        instance = super().update(instance, validated_data)
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            action.send(request.user, verb='updated department', target=instance)
-        return instance
-
-
-class DepartmentReadSerializer(serializers.ModelSerializer):
-    head_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Department
-        fields = [
-            'id',
-            'name',
-            'slug',
-            'head_name',
-            'contact_phone',
-            'contact_email',
-            'created',
-            'modified'
-        ]
-
-    def get_head_name(self, obj):
-        return obj.head.get_full_name() if obj.head else None
-
 
 # -------------------------------
 # SUPPLIER SERIALIZERS
@@ -65,11 +14,11 @@ class DepartmentReadSerializer(serializers.ModelSerializer):
 class SupplierWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
-        fields = ['name', 'email', 'contact', 'office_address', 'website']
+        fields = ['company_name', 'company_email', 'contact', 'website']
 
-    def validate_name(self, value):
-        if Supplier.objects.filter(name=value).exists():
-            raise serializers.ValidationError("A supplier with this name already exists.")
+    def validate_company_name(self, value):
+        if Supplier.objects.filter(company_name=value).exists():
+            raise serializers.ValidationError("A supplier with this company name already exists.")
         return value
 
 
@@ -78,10 +27,9 @@ class SupplierReadSerializer(serializers.ModelSerializer):
         model = Supplier
         fields = [
             'id',
-            'name',
-            'email',
+            'company_name',
+            'company_email',
             'contact',
-            'office_address',
             'website',
             'created',
             'modified'
@@ -92,15 +40,16 @@ class SupplierReadSerializer(serializers.ModelSerializer):
 # EQUIPMENT SERIALIZERS
 # -------------------------------
 class EquipmentWriteSerializer(serializers.ModelSerializer):
-    department = serializers.PrimaryKeyRelatedField(queryset=Department.objects.all())
+    supplier = serializers.PrimaryKeyRelatedField(queryset=Supplier.objects.all())
     image = serializers.ImageField(allow_empty_file=True, use_url=True, required=False, allow_null=True)
+    manual = serializers.FileField(allow_empty_file=True, use_url=True, required=False, allow_null=True)
 
     class Meta:
         model = Equipment
         fields = [
             'name',
             'device_type',
-            'embossment_id',
+            'equipment_id',
             'department',
             'operational_status',
             'serial_number',
@@ -109,9 +58,15 @@ class EquipmentWriteSerializer(serializers.ModelSerializer):
             'supplier',
             'description',
             'image',
+            'manual',
             'manufacturing_date',
+        ]
+        read_only_fields = [
+            'added_by',
             'decommission_date',
-            'added_by'
+            'equipment_id',
+            'created',
+            'modified'
         ]
 
     def create(self, validated_data):
@@ -121,21 +76,21 @@ class EquipmentWriteSerializer(serializers.ModelSerializer):
         else:
             raise ValidationError("User must be authenticated to add equipment.")
 
+        if validated_data.get('operational_status') == 'decommissioned':
+            validated_data['decommission_date'] = timezone.now()
+
         equipment = super().create(validated_data)
-        if request and request.user.is_authenticated:
-            action.send(request.user, verb='created equipment', target=equipment)
         return equipment
 
     def update(self, instance, validated_data):
+        new_status = validated_data.get('operational_status', instance.operational_status)
+        if new_status == 'decommissioned' and instance.operational_status != 'decommissioned':
+            instance.decommission_date = timezone.now()
         instance = super().update(instance, validated_data)
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            action.send(request.user, verb='updated equipment', target=instance)
         return instance
 
 
 class EquipmentReadSerializer(serializers.ModelSerializer):
-    department_name = serializers.SerializerMethodField()
     added_by_name = serializers.SerializerMethodField()
     supplier_name = serializers.SerializerMethodField()
 
@@ -145,15 +100,16 @@ class EquipmentReadSerializer(serializers.ModelSerializer):
             'id',
             'name',
             'device_type',
-            'embossment_id',
+            'equipment_id',
             'serial_number',
             'operational_status',
-            'department_name',
+            'department',
             'manufacturer',
             'model',
             'supplier_name',
             'description',
             'image',
+            'manual',
             'manufacturing_date',
             'decommission_date',
             'added_by_name',
@@ -161,11 +117,9 @@ class EquipmentReadSerializer(serializers.ModelSerializer):
             'modified'
         ]
 
-    def get_department_name(self, obj):
-        return obj.department.name if obj.department else None
-
     def get_supplier_name(self, obj):
-        return obj.supplier.name if obj.supplier else None
+        # Now using company_name from Supplier
+        return obj.supplier.company_name if obj.supplier else None
 
     def get_added_by_name(self, obj):
         return obj.added_by.get_full_name() if obj.added_by else "Unknown"
@@ -242,16 +196,12 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         start_date, end_date = data['start_date'], data['end_date']
         if end_date <= start_date:
             raise serializers.ValidationError("End date must be after start date.")
-
         if data['frequency'] != 'once' and not data.get('recurring_end'):
             raise serializers.ValidationError("Recurring schedules must have an 'recurring_end' date.")
-
         if data['for_all_equipment'] and data.get('equipment'):
-            raise serializers.ValidationError("General maintenance schedules should not be linked to specific equipment.")
-
+            raise serializers.ValidationError("A schedule for all equipment cannot be linked to specific equipment.")
         if not data['for_all_equipment'] and not data.get('equipment'):
             raise serializers.ValidationError("Equipment is required for non-general maintenance schedules.")
-
         return data
 
 

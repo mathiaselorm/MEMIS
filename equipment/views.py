@@ -9,11 +9,10 @@ from rest_framework.decorators import api_view, permission_classes
 from actstream import action
 
 from .models import (
-    Equipment, Department, Supplier, EquipmentMaintenanceActivity,
+    Equipment, Supplier, EquipmentMaintenanceActivity,
     MaintenanceSchedule
     )
 from .serializers import(
-    DepartmentWriteSerializer, DepartmentReadSerializer,
     SupplierWriteSerializer, SupplierReadSerializer,
     EquipmentWriteSerializer, EquipmentReadSerializer,
     EquipmentMaintenanceActivityReadSerializer, EquipmentMaintenanceActivityWriteSerializer,
@@ -25,241 +24,21 @@ from django.shortcuts import get_object_or_404
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from accounts.permissions import IsAdminOrSuperAdmin
-from django.db.models import Q
+from django.db.models import Q, Count, functions
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 import logging
+from django.utils import timezone
+import datetime
+import calendar
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
 
 
 
-class DepartmentList(generics.ListCreateAPIView):
-    """
-    List all departments or create a new department.
-    """
-    permission_classes = [IsAuthenticated]
-    queryset = Department.objects.all()
 
-    def get_serializer_class(self):
-        if self.request.method == 'POST':
-            return DepartmentWriteSerializer
-        return DepartmentReadSerializer
-
-    @swagger_auto_schema(
-        tags=['Departments'],
-        operation_description="Retrieve a list of departments.",
-        responses={200: DepartmentReadSerializer(many=True)},
-    )
-    def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Departments'],
-        operation_description="Create a new department. Only staff users have permission to create.",
-        request_body=DepartmentWriteSerializer,
-        responses={
-            201: openapi.Response(
-                description="Department successfully created.",
-                schema=DepartmentWriteSerializer,
-            ),
-            400: openapi.Response(
-                description="Bad request - Invalid data submitted.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    additional_properties=openapi.Schema(
-                        type=openapi.TYPE_ARRAY,
-                        items=openapi.Schema(type=openapi.TYPE_STRING)
-                    )
-                ),
-                examples={
-                    "application/json": {
-                        "name": ["This field is required."]
-                    }
-                }
-            ),
-            403: openapi.Response(
-                description="Permission denied - Only staff users can create departments.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "detail": openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description="Error message"
-                        )
-                    }
-                ),
-                examples={
-                    "application/json": {"detail": "You do not have permission to perform this action."}
-                }
-            ),
-            401: openapi.Response(
-                description="Unauthorized - User is not authenticated.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "detail": openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description="Error message"
-                        )
-                    }
-                ),
-                examples={
-                    "application/json": {"detail": "Authentication credentials were not provided."}
-                }
-            ),
-        }
-    )
-    def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
-
-
-
-class DepartmentDetail(RetrieveUpdateDestroyAPIView):
-    """
-    Retrieve, update, or delete a department using either an ID or a slug.
-    """
-    permission_classes = [IsAuthenticated]
-    queryset = Department.objects.all()
-
-    def get_object(self):
-        """
-        Retrieve the department by its ID or slug.
-        """
-        identifier = self.kwargs['identifier']
-        return get_object_by_id_or_slug(Department, identifier, id_field='id', slug_field='slug')
-
-    def get_serializer_class(self):
-        if self.request.method == 'GET':
-            return DepartmentReadSerializer
-        return DepartmentWriteSerializer
-
-    def perform_destroy(self, instance):
-        # Perform a hard delete
-        user = self.request.user if self.request.user.is_authenticated else None
-        action.send(user or instance, verb='deleted department', target=instance)
-        instance.delete()
-
-    @swagger_auto_schema(
-        tags=['Departments'],
-        operation_description="Retrieve a department by its ID or slug.",
-        responses={
-            200: openapi.Response(
-                description="Department details retrieved successfully.",
-                schema=DepartmentReadSerializer,
-            ),
-            404: openapi.Response(
-                description="Department not found.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "detail": openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description="Error message"
-                        )
-                    }
-                ),
-                examples={"application/json": {"detail": "Not found."}}
-            ),
-        },
-        manual_parameters=[
-            openapi.Parameter(
-                'identifier', openapi.IN_PATH,
-                description="ID or Slug of the department",
-                type=openapi.TYPE_STRING, required=True
-            )
-        ]
-    )
-    def get(self, request, *args, **kwargs):
-        """
-        Retrieve a department by its ID or slug.
-        """
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Departments'],
-        operation_description="Update a department by its ID or slug. Supports partial updates.",
-        request_body=DepartmentWriteSerializer,
-        responses={
-            200: openapi.Response(
-                description="Department successfully updated.",
-                schema=DepartmentWriteSerializer,
-            ),
-            400: openapi.Response(
-                description="Invalid data provided.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    additional_properties=openapi.Schema(
-                        type=openapi.TYPE_ARRAY,
-                        items=openapi.Schema(type=openapi.TYPE_STRING)
-                    )
-                ),
-                examples={"application/json": {"name": ["This field may not be blank."]}}
-            ),
-            404: openapi.Response(
-                description="Department not found.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "detail": openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description="Error message"
-                        )
-                    }
-                ),
-                examples={"application/json": {"detail": "Not found."}}
-            )
-        },
-        manual_parameters=[
-            openapi.Parameter(
-                'identifier', openapi.IN_PATH,
-                description="ID or Slug of the department",
-                type=openapi.TYPE_STRING, required=True
-            )
-        ]
-    )
-    def put(self, request, *args, **kwargs):
-        """
-        Update a department by its ID or slug.
-        """
-        kwargs['partial'] = True  # Enable partial updates
-        return self.update(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Departments'],
-        operation_description="Delete a department by its ID or slug.",
-        responses={
-            204: openapi.Response(
-                description="Department successfully deleted."
-            ),
-            404: openapi.Response(
-                description="Department not found.",
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        "detail": openapi.Schema(
-                            type=openapi.TYPE_STRING,
-                            description="Error message"
-                        )
-                    }
-                ),
-                examples={"application/json": {"detail": "Not found."}}
-            )
-        },
-        manual_parameters=[
-            openapi.Parameter(
-                'identifier', openapi.IN_PATH,
-                description="ID or Slug of the department",
-                type=openapi.TYPE_STRING, required=True
-            )
-        ]
-    )
-    def delete(self, request, *args, **kwargs):
-        """
-        Delete a department by its ID or slug.
-        """
-        return super().delete(request, *args, **kwargs)
 
 
 
@@ -317,142 +96,104 @@ class SupplierListCreateView(generics.ListCreateAPIView):
         return super().post(request, *args, **kwargs)
 
 
-class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    Retrieve, update, or delete a supplier by its primary key.
-    """
-    permission_classes = [IsAuthenticated]
-    queryset = Supplier.objects.all()
-    lookup_field = 'pk'
+# class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
+#     """
+#     Retrieve, update, or delete a supplier by its primary key.
+#     """
+#     permission_classes = [IsAuthenticated]
+#     queryset = Supplier.objects.all()
+#     lookup_field = 'pk'
 
-    def get_serializer_class(self):
-        if self.request.method in ['PUT', 'PATCH']:
-            return SupplierWriteSerializer
-        return SupplierReadSerializer
+#     def get_serializer_class(self):
+#         if self.request.method in ['PUT', 'PATCH']:
+#             return SupplierWriteSerializer
+#         return SupplierReadSerializer
     
-    def perform_destroy(self, instance):
-        # Perform a hard delete
-        user = self.request.user if self.request.user.is_authenticated else None
-        action.send(user or instance, verb='deleted a supplier', target=instance)
-        instance.delete()
+#     def perform_destroy(self, instance):
+#         # Perform a hard delete
+#         user = self.request.user if self.request.user.is_authenticated else None
+#         action.send(user or instance, verb='deleted a supplier', target=instance)
+#         instance.delete()
 
-    @swagger_auto_schema(
-        tags=['Suppliers'],
-        operation_description="Retrieve a supplier by its primary key.",
-        responses={
-            200: SupplierReadSerializer,
-            404: openapi.Response(
-                description="Supplier not found.",
-                examples={"application/json": {"detail": "Not found."}}
-            ),
-            401: openapi.Response(
-                description="Unauthorized access.",
-                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-            )
-        },
-        manual_parameters=[
-            openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
-        ]
-    )
-    def get(self, request, *args, **kwargs):
-        """
-        Retrieve a supplier by its primary key.
-        """
-        return super().get(request, *args, **kwargs)
+#     @swagger_auto_schema(
+#         tags=['Suppliers'],
+#         operation_description="Retrieve a supplier by its primary key.",
+#         responses={
+#             200: SupplierReadSerializer,
+#             404: openapi.Response(
+#                 description="Supplier not found.",
+#                 examples={"application/json": {"detail": "Not found."}}
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized access.",
+#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+#             )
+#         },
+#         manual_parameters=[
+#             openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
+#         ]
+#     )
+#     def get(self, request, *args, **kwargs):
+#         """
+#         Retrieve a supplier by its primary key.
+#         """
+#         return super().get(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        tags=['Suppliers'],
-        operation_description="Update a supplier by its primary key.",
-        request_body=SupplierWriteSerializer,
-        responses={
-            200: SupplierReadSerializer,
-            400: openapi.Response(
-                description="Invalid input.",
-                examples={"application/json": {"detail": "Validation error details."}}
-            ),
-            404: openapi.Response(
-                description="Supplier not found.",
-                examples={"application/json": {"detail": "Not found."}}
-            ),
-            401: openapi.Response(
-                description="Unauthorized access.",
-                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-            )
-        }
-    )
-    def put(self, request, *args, **kwargs):
-        """
-        Update a supplier by its primary key.
-        """
-        kwargs['partial'] = True  # Enable partial updates
-        return super().put(request, *args, **kwargs)
+#     @swagger_auto_schema(
+#         tags=['Suppliers'],
+#         operation_description="Update a supplier by its primary key.",
+#         request_body=SupplierWriteSerializer,
+#         responses={
+#             200: SupplierReadSerializer,
+#             400: openapi.Response(
+#                 description="Invalid input.",
+#                 examples={"application/json": {"detail": "Validation error details."}}
+#             ),
+#             404: openapi.Response(
+#                 description="Supplier not found.",
+#                 examples={"application/json": {"detail": "Not found."}}
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized access.",
+#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+#             )
+#         }
+#     )
+#     def put(self, request, *args, **kwargs):
+#         """
+#         Update a supplier by its primary key.
+#         """
+#         kwargs['partial'] = True  # Enable partial updates
+#         return super().put(request, *args, **kwargs)
 
-    @swagger_auto_schema(
-        tags=['Suppliers'],
-        operation_description="Delete a supplier by its primary key.",
-        responses={
-            204: openapi.Response(description="Supplier deleted successfully."),
-            404: openapi.Response(
-                description="Supplier not found.",
-                examples={"application/json": {"detail": "Not found."}}
-            ),
-            401: openapi.Response(
-                description="Unauthorized access.",
-                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-            )
-        },
-        manual_parameters=[
-            openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
-        ]
-    )
-    def delete(self, request, *args, **kwargs):
-        """
-        Delete a supplier by its primary key.
-        """
-        return super().delete(request, *args, **kwargs)
-
-
+#     @swagger_auto_schema(
+#         tags=['Suppliers'],
+#         operation_description="Delete a supplier by its primary key.",
+#         responses={
+#             204: openapi.Response(description="Supplier deleted successfully."),
+#             404: openapi.Response(
+#                 description="Supplier not found.",
+#                 examples={"application/json": {"detail": "Not found."}}
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized access.",
+#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+#             )
+#         },
+#         manual_parameters=[
+#             openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
+#         ]
+#     )
+#     def delete(self, request, *args, **kwargs):
+#         """
+#         Delete a supplier by its primary key.
+#         """
+#         return super().delete(request, *args, **kwargs)
 
 
-class TotalDepartmentsView(generics.GenericAPIView):
-    """
-    View to return the total number of departments in the system.
-    """
-    permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        tags=['Departments'],
-        operation_description="Retrieve the total number of departments in the system.",
-        responses={
-            200: openapi.Response(
-                description="Total count of departments.",
-                examples={
-                    'application/json': {'total_departments': 5}
-                },
-                schema=openapi.Schema(
-                    type=openapi.TYPE_OBJECT,
-                    properties={
-                        'total_departments': openapi.Schema(
-                            type=openapi.TYPE_INTEGER,
-                            description="Total number of departments"
-                        )
-                    }
-                )
-            ),
-            401: openapi.Response(
-                description="Unauthorized - user must be authenticated.",
-                examples={
-                    "application/json": {"detail": "Authentication credentials were not provided."}
-                }
-            ),
-            500: openapi.Response(
-                description="Server error."
-            )
-        }
-    )
-    def get(self, request, *args, **kwargs):
-        total_departments = Department.objects.count()
-        return Response({'total_departments': total_departments})
+
+
 
 
 class EquipmentList(generics.ListCreateAPIView):
@@ -726,68 +467,258 @@ class TotalEquipmentView(APIView):
         return Response({'total_equipment': total_equipment})
 
 
-class TotalEquipmentUnderMaintenanceView(APIView):
+class EquipmentStatusSummaryView(APIView):
     """
-    View to return the total number of equipment currently under maintenance.
+    Retrieve aggregated counts of equipment by operational status.
     """
     permission_classes = [IsAuthenticated]
 
     @swagger_auto_schema(
         tags=['Equipment'],
-        operation_description="Get the total number of equipment currently under maintenance.",
+        operation_description="Retrieve aggregated counts of equipment by operational status.",
         responses={
             200: openapi.Response(
-                description="Total number of equipment under maintenance successfully retrieved.",
+                description="Equipment status summary retrieved successfully.",
+                # The response is an object where each key is a status
+                # and the value is an integer count.
                 schema=openapi.Schema(
                     type=openapi.TYPE_OBJECT,
-                    properties={
-                        'equipment_under_maintenance': openapi.Schema(
-                            type=openapi.TYPE_INTEGER,
-                            description="Total count of equipment under maintenance"
-                        )
+                    additional_properties=openapi.Schema(
+                        type=openapi.TYPE_INTEGER
+                    )
+                ),
+                examples={
+                    "application/json": {
+                        "functional": 120,
+                        "non_functional": 30,
+                        "under_maintenance": 15,
+                        "decommissioned": 5
                     }
-                )
+                }
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
             )
         }
     )
-    def get(self, request, format=None):
-        equipment_under_maintenance_count = Equipment.objects.filter(
-            operational_status=Equipment.OPERATIONAL_STATUS.under_maintenance,
-            is_removed=False
-        ).count()
-        return Response({'equipment_under_maintenance': equipment_under_maintenance_count})
+    def get(self, request, *args, **kwargs):
+        summary_qs = (
+            Equipment.objects
+            .values('operational_status')
+            .annotate(total=Count('id'))
+        )
+        
+        # Convert the QuerySet into a dict keyed by operational_status
+        summary = {}
+        total_equipment = 0
+        for item in summary_qs:
+            status = item['operational_status']
+            count = item['total']
+            summary[status] = count
+            total_equipment += count
+
+        # Optionally add the total to the response
+        summary['total_equipment'] = total_equipment
+
+        return Response(summary)
 
 
 
+
+
+class EquipmentTypeSummaryView(APIView):
+    """
+    Retrieve aggregated counts of equipment by device type.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        tags=['Equipment'],
+        operation_description="Retrieve aggregated counts of equipment by device type.",
+        responses={
+            200: openapi.Response(
+                description="Device type summary retrieved successfully.",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    additional_properties=openapi.Schema(type=openapi.TYPE_INTEGER)
+                ),
+                examples={
+                    "application/json": {
+                        "diagnostic": 10,
+                        "therapeutic": 7,
+                        "life_support": 5,
+                        "lab": 12,
+                        "monitoring": 4,
+                        "hospital_industrial": 3,
+                        "safety_equipment": 2,
+                        "other": 9
+                    }
+                }
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        # Aggregate by device_type and count the number of equipment in each category
+        summary_qs = (
+            Equipment.objects
+            .values('device_type') 
+            .annotate(total=Count('id'))
+        )
+        
+        # Convert the QuerySet into a dictionary keyed by device_type
+        summary = {item['device_type']: item['total'] for item in summary_qs}
+
+        return Response(summary)
     
+    
+    
+class  MaintenanceActivityOverviewView(APIView):
+    """
+    Returns daily counts of maintenance reports (Preventive Maintenance, Repair, Calibration)
+    within a specified date range.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        tags=['Maintenance Reports'],
+        operation_description=(
+            "Retrieve daily counts of maintenance reports within a specified period. "
+            "The query parameter 'period' accepts the following values: "
+            "7 (for last 7 days), 30 (for last 30 days), or '3month' (for last 3 months). "
+            "If not provided or invalid, defaults to 30 days."
+        ),
+        manual_parameters=[
+            openapi.Parameter(
+                'period',
+                openapi.IN_QUERY,
+                description="Period for which to retrieve data. Valid values: 7, 30, or '3month'.",
+                type=openapi.TYPE_STRING,
+                required=False
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="A list of daily report counts for each type of maintenance report.",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            'date': openapi.Schema(type=openapi.TYPE_STRING, format='date'),
+                            'preventive_maintenance': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'repair': openapi.Schema(type=openapi.TYPE_INTEGER),
+                            'calibration': openapi.Schema(type=openapi.TYPE_INTEGER),
+                        }
+                    )
+                ),
+                examples={
+                    "application/json": [
+                        {
+                            "date": "2025-06-09",
+                            "preventive_maintenance": 5,
+                            "repair": 3,
+                            "calibration": 2
+                        },
+                        {
+                            "date": "2025-06-10",
+                            "preventive_maintenance": 1,
+                            "repair": 0,
+                            "calibration": 0
+                        }
+                    ]
+                }
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            ),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        # Determine the period in days. Default to 30 if not provided or invalid.
+        period_param = request.query_params.get('period', '30').lower()
+
+        # Accept 7, 30 or "3month" (or "3 months") as valid period values.
+        if period_param in ['7', '30']:
+            period = int(period_param)
+        elif period_param in ['3month', '3 months']:
+            period = 90  # Approximate 3 months as 90 days.
+        else:
+            period = 30  # Default to 30 days
+            
+        end_date = timezone.now()
+        start_date = end_date - datetime.timedelta(days=period)
+
+        # Filter the activities within the chosen date range
+        queryset = EquipmentMaintenanceActivity.objects.filter(
+            date_time__gte=start_date,
+            date_time__lte=end_date
+        )
+
+        # Group by day and activity_type, and count
+        grouped_qs = (
+            queryset
+            .annotate(day=functions.TruncDay('date_time'))
+            .values('day', 'activity_type')
+            .annotate(count=Count('id'))
+            .order_by('day')
+        )
+
+        # Build a dictionary keyed by date, with sub-keys for each activity type
+        data_by_day = defaultdict(lambda: {
+            'preventive maintenance': 0,
+            'repair': 0,
+            'calibration': 0
+        })
+
+        for item in grouped_qs:
+            day = item['day']
+            activity_type = item['activity_type']
+            data_by_day[day][activity_type] = item['count']
+
+        #  Convert this dictionary into a list of objects sorted by date
+        final_data = []
+        for day in sorted(data_by_day.keys()):
+            final_data.append({
+                'date': day.strftime('%Y-%m-%d'),
+                'preventive_maintenance': data_by_day[day]['preventive maintenance'],
+                'repair': data_by_day[day]['repair'],
+                'calibration': data_by_day[day]['calibration'],
+            })
+
+        return Response(final_data)
 
 
 
 class MaintenanceActivitiesByEquipmentView(generics.ListCreateAPIView):
     """
-    List all activities for a specific equipment or create a new activity.
+    List all maintenance reports for a specific equipment or create a new report.
     """
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['technician', 'activity_type']
 
     def get_queryset(self):
         equipment_id = self.kwargs.get('equipment_id')
+
         queryset = (
             EquipmentMaintenanceActivity.objects
             .filter(equipment_id=equipment_id)
             .select_related('equipment', 'technician')
         )
-        
-        # Filtering by technician and activity_type
-        technician = self.request.query_params.get('technician')
-        activity_type = self.request.query_params.get('activity_type')
 
-        if technician:
-            queryset = queryset.filter(technician_id=technician)
-        if activity_type:
-            queryset = queryset.filter(activity_type=activity_type)
-        
+        # Filter by 'year' query parameter if provided
+        year_str = self.request.query_params.get('year')
+        if year_str:
+            try:
+                year = int(year_str)
+                queryset = queryset.filter(date_time__year=year)
+            except ValueError:
+                pass  # or raise a validation error if you prefer
+
         return queryset
 
     def get_serializer_class(self):
@@ -801,8 +732,8 @@ class MaintenanceActivitiesByEquipmentView(generics.ListCreateAPIView):
         serializer.save(equipment=equipment)
 
     @swagger_auto_schema(
-        tags=['Equipment Activities'],
-        operation_description="Retrieve all activities for a specific equipment with optional filtering.",
+        tags=['Maintenance Reports'],
+        operation_description="Retrieve all maintenance reports for a specific equipment with optional filtering by year (e.g., ?year=2024).",
         manual_parameters=[
             openapi.Parameter(
                 'equipment_id', openapi.IN_PATH,
@@ -811,16 +742,9 @@ class MaintenanceActivitiesByEquipmentView(generics.ListCreateAPIView):
                 required=True
             ),
             openapi.Parameter(
-                'technician', openapi.IN_QUERY,
-                description="Filter by technician ID",
+                'year', openapi.IN_QUERY,
+                description="Filter by year (e.g., 2024)",
                 type=openapi.TYPE_INTEGER,
-                required=False
-            ),
-            openapi.Parameter(
-                'activity_type', openapi.IN_QUERY,
-                description="Filter by activity type (preventive maintenance, repair, calibration)",
-                type=openapi.TYPE_STRING,
-                enum=['preventive maintenance', 'repair', 'calibration'],
                 required=False
             ),
         ],
@@ -834,13 +758,13 @@ class MaintenanceActivitiesByEquipmentView(generics.ListCreateAPIView):
     )
     def get(self, request, *args, **kwargs):
         """
-        Retrieve all activities for a specific equipment with optional filtering.
+        Retrieve all Maintenance reports for a specific equipment with optional filtering by year.
         """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Equipment Activities'],
-        operation_description="Create a new activity for a specific equipment.",
+        tags=['Maintenance Reports'],
+        operation_description="Create a new maintenance report for a specific equipment.",
         request_body=EquipmentMaintenanceActivityWriteSerializer,
         responses={
             201: EquipmentMaintenanceActivityReadSerializer,
@@ -856,146 +780,21 @@ class MaintenanceActivitiesByEquipmentView(generics.ListCreateAPIView):
     )
     def post(self, request, *args, **kwargs):
         """
-        Create a new activity for a specific equipment.
+       Create a new maintenance report for this equipment (by DB primary key).
         """
         return super().post(request, *args, **kwargs)
-
-
-
-class MaintenanceActivitiesDetailByEquipmentView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    Retrieve, update, or delete an activity for a specific equipment.
-    """
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        equipment_id = self.kwargs.get('equipment_id')
-        return EquipmentMaintenanceActivity.objects.filter(equipment_id=equipment_id)
-
-    def get_object(self):
-        queryset = self.get_queryset()
-        activity_id = self.kwargs.get('activity_id')
-        obj = get_object_or_404(queryset, id=activity_id)
-        return obj
-
-    def get_serializer_class(self):
-        if self.request.method == 'GET':
-            return EquipmentMaintenanceActivityReadSerializer
-        else:
-            return EquipmentMaintenanceActivityWriteSerializer
-
-    def put(self, request, *args, **kwargs):
-        """
-        Update an activity for a specific equipment. Supports partial updates.
-        """
-        kwargs['partial'] = True  # Allow partial updates
-        return super().put(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Equipment Activities'],
-        operation_description="Retrieve an activity for a specific equipment.",
-        manual_parameters=[
-            openapi.Parameter(
-                'equipment_id', openapi.IN_PATH,
-                description="ID of the equipment",
-                type=openapi.TYPE_INTEGER,
-                required=True
-            ),
-            openapi.Parameter(
-                'activity_id', openapi.IN_PATH,
-                description="ID of the activity",
-                type=openapi.TYPE_INTEGER,
-                required=True
-            ),
-        ],
-        responses={
-            200: openapi.Response(
-                description="Activity retrieved successfully.",
-                schema=EquipmentMaintenanceActivityReadSerializer,
-            ),
-            404: openapi.Response(
-                description="Activity not found.",
-                examples={"application/json": {"detail": "Not found."}}
-            ),
-            401: openapi.Response(
-                description="Unauthorized access.",
-                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-            )
-        }
-    )
-    def get(self, request, *args, **kwargs):
-        """
-        Retrieve an activity for a specific equipment.
-        """
-        return super().get(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Equipment Activities'],
-        operation_description="Update an activity for a specific equipment. Supports partial updates.",
-        request_body=EquipmentMaintenanceActivityWriteSerializer,
-        responses={
-            200: openapi.Response(
-                description="Activity updated successfully.",
-                schema=EquipmentMaintenanceActivityReadSerializer,
-            ),
-            400: openapi.Response(
-                description="Invalid data provided.",
-                examples={"application/json": {"detail": "Validation error details."}}
-            ),
-            404: openapi.Response(
-                description="Activity not found.",
-                examples={"application/json": {"detail": "Not found."}}
-            ),
-            401: openapi.Response(
-                description="Unauthorized access.",
-                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-            )
-        }
-    )
-    def put(self, request, *args, **kwargs):
-        """
-        Update an activity for a specific equipment. Supports partial updates.
-        """
-        kwargs['partial'] = True
-        return super().put(request, *args, **kwargs)
-
-    @swagger_auto_schema(
-        tags=['Equipment Activities'],
-        operation_description="Delete an activity for a specific equipment.",
-        responses={
-            204: openapi.Response(description="Activity deleted successfully."),
-            404: openapi.Response(
-                description="Activity not found.",
-                examples={"application/json": {"detail": "Not found."}}
-            ),
-            401: openapi.Response(
-                description="Unauthorized access.",
-                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-            )
-        }
-    )
-    def delete(self, request, *args, **kwargs):
-        """
-        Delete an activity for a specific equipment.
-        """
-        return super().delete(request, *args, **kwargs)
 
 
 
 
 class MaintenanceActivitiesListCreateView(generics.ListCreateAPIView):
     """
-    List all equipment activities or create a new activity.
+    List all maintenance reports or create a new report.
     """
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        include_deleted = self.request.query_params.get('include_deleted', 'false').lower()
-        if include_deleted == 'true':
-            queryset = EquipmentMaintenanceActivity.all_objects.all()
-        else:
-            queryset = EquipmentMaintenanceActivity.objects.all()
-        return queryset
+        return EquipmentMaintenanceActivity.objects.all()
 
     def get_serializer_class(self):
         if self.request.method == 'POST':
@@ -1003,16 +802,8 @@ class MaintenanceActivitiesListCreateView(generics.ListCreateAPIView):
         return EquipmentMaintenanceActivityReadSerializer
 
     @swagger_auto_schema(
-        tags=['Equipment Activities'],
-        operation_description="Retrieve a list of all equipment activities.",
-        manual_parameters=[
-            openapi.Parameter(
-                'include_deleted', openapi.IN_QUERY,
-                description="Include soft-deleted activities (true/false). Default is false.",
-                type=openapi.TYPE_BOOLEAN,
-                required=False
-            ),
-        ],
+        tags=['Maintenance Reports'],
+        operation_description="Retrieve a list of all maintenance reports.",
         responses={
             200: EquipmentMaintenanceActivityReadSerializer(many=True),
             401: openapi.Response(
@@ -1025,13 +816,13 @@ class MaintenanceActivitiesListCreateView(generics.ListCreateAPIView):
     )
     def get(self, request, *args, **kwargs):
         """
-        Retrieve a list of all equipment activities.
+        Retrieve a list of all maintenance reports.
         """
         return super().get(request, *args, **kwargs)
 
     @swagger_auto_schema(
-        tags=['Equipment Activities'],
-        operation_description="Create a new equipment activity.",
+        tags=['Maintenance Reports'],
+        operation_description="Create a new  maintenance report.",
         request_body=EquipmentMaintenanceActivityWriteSerializer,
         responses={
             201: EquipmentMaintenanceActivityReadSerializer,
@@ -1047,62 +838,44 @@ class MaintenanceActivitiesListCreateView(generics.ListCreateAPIView):
     )
     def post(self, request, *args, **kwargs):
         """
-        Create a new equipment activity.
+        Create a new  maintenance report.
         """
         return super().post(request, *args, **kwargs)
 
 
 
-class MaintenanceActivitiesDetailView(generics.RetrieveUpdateDestroyAPIView):
+class MaintenanceActivitiesDetailView(generics.RetrieveAPIView):
     """
-    Retrieve, update, or delete an equipment activity.
+    Retrieve a maintenance report.
     """
     lookup_field = 'pk'
 
-    def get_permissions(self):
-        if self.request.method == 'DELETE':
-            self.permission_classes = [IsAuthenticated, IsAdminOrSuperAdmin]
-        else:
-            self.permission_classes = [IsAuthenticated]
-        return super().get_permissions()
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        include_deleted = self.request.query_params.get('include_deleted', 'false').lower()
-        if include_deleted == 'true':
-            queryset = EquipmentMaintenanceActivity.all_objects.all()
-        else:
-            queryset = EquipmentMaintenanceActivity.objects.all()
-        return queryset
+        return EquipmentMaintenanceActivity.objects.all()
 
     def get_serializer_class(self):
-        if self.request.method in ['PUT', 'PATCH']:
-            return EquipmentMaintenanceActivityWriteSerializer
         return EquipmentMaintenanceActivityReadSerializer
 
     @swagger_auto_schema(
-        tags=['Equipment Activities'],
-        operation_description="Retrieve an equipment activity by its primary key.",
+        tags=['Maintenance Reports'],
+        operation_description="Retrieve an maintenance report by its primary key.",
         manual_parameters=[
             openapi.Parameter(
-                'include_deleted', openapi.IN_QUERY,
-                description="Include soft-deleted activity (true/false). Default is false.",
-                type=openapi.TYPE_BOOLEAN,
-                required=False
-            ),
-            openapi.Parameter(
                 'pk', openapi.IN_PATH,
-                description="Primary key of the equipment activity",
+                description="Primary key of the maintenance report",
                 type=openapi.TYPE_INTEGER,
                 required=True
             )
         ],
         responses={
             200: openapi.Response(
-                description="Equipment activity retrieved successfully.",
+                description="Maintenance report retrieved successfully.",
                 schema=EquipmentMaintenanceActivityReadSerializer
             ),
             404: openapi.Response(
-                description="Equipment activity not found.",
+                description="Maintenance report not found.",
                 examples={"application/json": {"detail": "Not found."}}
             ),
             401: openapi.Response(
@@ -1112,28 +885,126 @@ class MaintenanceActivitiesDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def get(self, request, *args, **kwargs):
-        """
-        Retrieve an equipment activity by its primary key.
+        """  
+        Retrieve an maintenance report by its primary key.
         """
         return super().get(request, *args, **kwargs)
 
 
 
+class UpcomingMaintenanceScheduleView(APIView):
+    """
+    Lists all maintenance occurrences (including recurring ones)
+    that fall within the current calendar month.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="List all upcoming maintenance events for the current month (including recurring).",
+        tags=['Maintenance Schedules'],
+        responses={
+            200: openapi.Response(
+                description="A list of upcoming maintenance events within the current month.",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_ARRAY,
+                    items=openapi.Schema(
+                        type=openapi.TYPE_OBJECT,
+                        properties={
+                            "title": openapi.Schema(type=openapi.TYPE_STRING),
+                            "activity_type": openapi.Schema(type=openapi.TYPE_STRING),
+                            "equipment": openapi.Schema(type=openapi.TYPE_STRING),
+                            "date": openapi.Schema(type=openapi.TYPE_STRING, format='date'),
+                        }
+                    )
+                ),
+                examples={
+                    "application/json": [
+                        {
+                            "title": "Bolt Tightening Tonometer",
+                            "activity_type": "repair",
+                            "equipment": "Endoscope",
+                            "date": "2024-01-15"
+                        },
+                        {
+                            "title": "System Servicing",
+                            "activity_type": "preventive maintenance",
+                            "equipment": "All Equipment",
+                            "date": "2024-01-20"
+                        }
+                    ]
+                }
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            ),
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        # 1. Determine start_of_month and end_of_month
+        now = timezone.now()
+        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # Calculate last day of the current month
+        _, last_day = calendar.monthrange(now.year, now.month)
+        end_of_month = start_of_month.replace(
+            day=last_day,
+            hour=23,
+            minute=59,
+            second=59,
+            microsecond=999999
+        )
+
+        # 2. Retrieve all maintenance schedules
+        schedules = MaintenanceSchedule.objects.all()
+
+        # 3. Collect all occurrences in the current month
+        events = []
+        for schedule in schedules:
+            occurrences = schedule.get_occurrences_in_range(start_of_month, end_of_month)
+            
+            # Determine how to label equipment
+            if schedule.for_all_equipment:
+                equipment_label = "All Equipment"
+            else:
+                # Single piece of equipment (ForeignKey)
+                if schedule.equipment:
+                    equipment_label = schedule.equipment.name
+                else:
+                    equipment_label = "No equipment linked"
+            
+            for occ in occurrences:
+                events.append({
+                    "title": schedule.title,
+                    "activity_type": schedule.activity_type,
+                    "equipment": equipment_label,
+                    "date": occ.strftime('%Y-%m-%d'),  # or ISO 8601: occ.isoformat()
+                })
+
+        # 4. Sort the events by date
+        events.sort(key=lambda e: e["date"])
+
+        # 5. Return as JSON
+        return Response(events)
 
 class MaintenanceScheduleListCreateView(generics.ListCreateAPIView):
     """
     List all maintenance schedules or create a new one.
     """
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['frequency', 'is_active']
-    search_fields = ['title', 'description', 'equipment__name']  
-    ordering_fields = ['start_date', 'end_date']  # Updated ordering fields
+    # filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    # filterset_fields = ['frequency', 'is_active']
+    # search_fields = ['title', 'description', 'equipment__name']  
+    # ordering_fields = ['start_date', 'end_date']  # Updated ordering fields
 
     def get_queryset(self):
         """
         Return maintenance schedules accessible to the user.
         """
+        # If this is a swagger fake view or the user isn't authenticated, return an empty queryset.
+        if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
+            return MaintenanceSchedule.objects.none()
+
         user = self.request.user
         if IsAdminOrSuperAdmin().has_permission(self.request, self):
             return MaintenanceSchedule.objects.all()
@@ -1196,6 +1067,10 @@ class MaintenanceScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
         """
         Return maintenance schedules accessible to the user.
         """
+        # If this is a swagger fake view or the user isn't authenticated, return an empty queryset.
+        if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
+            return MaintenanceSchedule.objects.none()
+
         user = self.request.user
         if IsAdminOrSuperAdmin().has_permission(self.request, self):
             return MaintenanceSchedule.objects.all()
@@ -1290,6 +1165,8 @@ class MaintenanceScheduleDetailView(generics.RetrieveUpdateDestroyAPIView):
 )
 @api_view(['POST'])
 def deactivate_schedule(request, pk):
+    if not request.user.is_authenticated:
+        return Response({'detail': 'Authentication credentials were not provided.'}, status=status.HTTP_401_UNAUTHORIZED)
     schedule = get_object_or_404(MaintenanceSchedule, pk=pk)
     if schedule.technician != request.user:
         return Response({'detail': 'Not allowed.'}, status=status.HTTP_403_FORBIDDEN)
@@ -1308,3 +1185,120 @@ def deactivate_schedule(request, pk):
 
 
 
+# class MaintenanceActivitiesDetailByEquipmentView(generics.RetrieveUpdateDestroyAPIView):
+#     """
+#     Retrieve, update, or delete an activity for a specific equipment.
+#     """
+#     permission_classes = [IsAuthenticated]
+
+#     def get_queryset(self):
+#         equipment_id = self.kwargs.get('equipment_id')
+#         return EquipmentMaintenanceActivity.objects.filter(equipment_id=equipment_id)
+
+#     def get_object(self):
+#         queryset = self.get_queryset()
+#         activity_id = self.kwargs.get('activity_id')
+#         obj = get_object_or_404(queryset, id=activity_id)
+#         return obj
+
+#     def get_serializer_class(self):
+#         if self.request.method == 'GET':
+#             return EquipmentMaintenanceActivityReadSerializer
+#         else:
+#             return EquipmentMaintenanceActivityWriteSerializer
+
+#     def put(self, request, *args, **kwargs):
+#         """
+#         Update an activity for a specific equipment. Supports partial updates.
+#         """
+#         kwargs['partial'] = True  # Allow partial updates
+#         return super().put(request, *args, **kwargs)
+
+#     @swagger_auto_schema(
+#         tags=['Equipment Activities'],
+#         operation_description="Retrieve an activity for a specific equipment.",
+#         manual_parameters=[
+#             openapi.Parameter(
+#                 'equipment_id', openapi.IN_PATH,
+#                 description="ID of the equipment",
+#                 type=openapi.TYPE_INTEGER,
+#                 required=True
+#             ),
+#             openapi.Parameter(
+#                 'activity_id', openapi.IN_PATH,
+#                 description="ID of the activity",
+#                 type=openapi.TYPE_INTEGER,
+#                 required=True
+#             ),
+#         ],
+#         responses={
+#             200: openapi.Response(
+#                 description="Activity retrieved successfully.",
+#                 schema=EquipmentMaintenanceActivityReadSerializer,
+#             ),
+#             404: openapi.Response(
+#                 description="Activity not found.",
+#                 examples={"application/json": {"detail": "Not found."}}
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized access.",
+#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+#             )
+#         }
+#     )
+#     def get(self, request, *args, **kwargs):
+#         """
+#         Retrieve an activity for a specific equipment.
+#         """
+#         return super().get(request, *args, **kwargs)
+
+#     @swagger_auto_schema(
+#         tags=['Equipment Activities'],
+#         operation_description="Update an activity for a specific equipment. Supports partial updates.",
+#         request_body=EquipmentMaintenanceActivityWriteSerializer,
+#         responses={
+#             200: openapi.Response(
+#                 description="Activity updated successfully.",
+#                 schema=EquipmentMaintenanceActivityReadSerializer,
+#             ),
+#             400: openapi.Response(
+#                 description="Invalid data provided.",
+#                 examples={"application/json": {"detail": "Validation error details."}}
+#             ),
+#             404: openapi.Response(
+#                 description="Activity not found.",
+#                 examples={"application/json": {"detail": "Not found."}}
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized access.",
+#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+#             )
+#         }
+#     )
+#     def put(self, request, *args, **kwargs):
+#         """
+#         Update an activity for a specific equipment. Supports partial updates.
+#         """
+#         kwargs['partial'] = True
+#         return super().put(request, *args, **kwargs)
+
+#     @swagger_auto_schema(
+#         tags=['Equipment Activities'],
+#         operation_description="Delete an activity for a specific equipment.",
+#         responses={
+#             204: openapi.Response(description="Activity deleted successfully."),
+#             404: openapi.Response(
+#                 description="Activity not found.",
+#                 examples={"application/json": {"detail": "Not found."}}
+#             ),
+#             401: openapi.Response(
+#                 description="Unauthorized access.",
+#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+#             )
+#         }
+#     )
+#     def delete(self, request, *args, **kwargs):
+#         """
+#         Delete an activity for a specific equipment.
+#         """
+#         return super().delete(request, *args, **kwargs)

@@ -20,6 +20,10 @@ class NotificationListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        # Detect if this is a swagger fake view or if the user is not authenticated.
+        if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
+            return Notification.objects.none()
+        
         return Notification.objects.filter(user=self.request.user).order_by('-created')
 
     @swagger_auto_schema(
@@ -49,6 +53,9 @@ class NotificationDetailView(generics.RetrieveUpdateAPIView):
     lookup_field = 'pk'
 
     def get_queryset(self):
+        # If this is a swagger fake view or the user isn't authenticated, return an empty queryset.
+        if getattr(self, 'swagger_fake_view', False) or not self.request.user.is_authenticated:
+            return Notification.objects.none()
         return Notification.objects.filter(user=self.request.user)
 
     @swagger_auto_schema(

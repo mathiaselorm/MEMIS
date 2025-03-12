@@ -182,6 +182,8 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
     @swagger_auto_schema(
+        tags=["Authentication"],
+        operation_description="Obtain JWT tokens for authenticated users.",
         operation_summary="Obtain JWT tokens",
         responses={200: "Tokens obtained", 400: "Bad Request"}
     )
@@ -244,7 +246,7 @@ class PasswordChangeView(generics.UpdateAPIView):
             required=['old_password', 'new_password']
         ),
         security=[{'Bearer': []}], 
-        tags=['User Account Management']
+        tags=['User Management']
     )
     def update(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data, context={'request': request})

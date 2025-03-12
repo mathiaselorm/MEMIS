@@ -1,15 +1,7 @@
 from django.contrib import admin
 from django import forms
-from .models import Equipment, Department, EquipmentMaintenanceActivity, MaintenanceSchedule, Supplier
+from .models import Equipment, EquipmentMaintenanceActivity, MaintenanceSchedule, Supplier
 
-# ---------------------------
-# Department Admin
-# ---------------------------
-@admin.register(Department)
-class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'head', 'contact_phone', 'contact_email')
-    search_fields = ('name',)
-    readonly_fields = ('slug',)
 
 
 
@@ -18,12 +10,12 @@ class DepartmentAdmin(admin.ModelAdmin):
 # ---------------------------
 @admin.register(Supplier)
 class SupplierAdmin(admin.ModelAdmin):
-    list_display = ('name', 'email', 'contact', 'office_address', 'website', 'created', 'modified')
-    search_fields = ('name', 'email', 'contact')
+    list_display = ('company_name', 'company_email', 'contact', 'website', 'created', 'modified')
+    search_fields = ('company_name', 'company_email', 'contact')
     readonly_fields = ('created', 'modified')
     fieldsets = (
         (None, {
-            'fields': ('name', 'email', 'contact', 'office_address', 'website')
+            'fields': ('company_name', 'company_email', 'contact', 'website')
         }),
         ('Timestamps', {
             'fields': ('created', 'modified')
@@ -51,13 +43,13 @@ class EquipmentMaintenanceActivityInline(admin.TabularInline):
 # ---------------------------
 @admin.register(Equipment)
 class EquipmentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'device_type', 'serial_number', 'operational_status', 'department', 'manufacturer')
+    list_display = ('equipment_id', 'name', 'device_type', 'serial_number', 'operational_status', 'department', 'supplier', 'manufacturer')
     list_filter = ('operational_status', 'device_type', 'department')
-    search_fields = ('name', 'serial_number', 'embossment_id')
+    search_fields = ('name', 'serial_number', 'equipment_id')
     readonly_fields = ('created', 'modified', 'added_by_name')
     fieldsets = (
         (None, {
-            'fields': ('name', 'device_type', 'serial_number', 'embossment_id', 'image')
+            'fields': ('name', 'device_type', 'serial_number', 'equipment_id', 'image')
         }),
         ('Ownership', {
             'fields': ('operational_status', 'department', 'added_by', 'added_by_name')
