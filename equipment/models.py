@@ -97,17 +97,11 @@ class Equipment(TimeStampedModel):
         'image',
         blank=True,
         null=True,
-        resource_type='image',
-        folder='equipment',
-        unique_filename=True
     )
     manual = CloudinaryField(
         'manual',
         blank=True,
         null=True,
-        resource_type='raw',
-        folder='equipment',
-        unique_filename=True
     )
     decommission_date = models.DateField(blank=True, null=True)
     added_by = models.ForeignKey(

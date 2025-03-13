@@ -7,6 +7,7 @@ from . import views
 urlpatterns = [
     # Supplier endpoints
     path('suppliers/', views.SupplierListCreateView.as_view(), name='supplier-list-create'),
+    path('suppliers/<int:pk>/', views.SupplierDetailView.as_view(), name='supplier-detail'),
 
     # Equipment endpoints
     path('equipment/', views.EquipmentList.as_view(), name='equipment-list'),

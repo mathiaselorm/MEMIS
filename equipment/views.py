@@ -96,99 +96,120 @@ class SupplierListCreateView(generics.ListCreateAPIView):
         return super().post(request, *args, **kwargs)
 
 
-# class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
-#     """
-#     Retrieve, update, or delete a supplier by its primary key.
-#     """
-#     permission_classes = [IsAuthenticated]
-#     queryset = Supplier.objects.all()
-#     lookup_field = 'pk'
+class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update, or delete a supplier by its primary key.
+    """
+    permission_classes = [IsAuthenticated]
+    queryset = Supplier.objects.all()
+    lookup_field = 'pk'
 
-#     def get_serializer_class(self):
-#         if self.request.method in ['PUT', 'PATCH']:
-#             return SupplierWriteSerializer
-#         return SupplierReadSerializer
-    
-#     def perform_destroy(self, instance):
-#         # Perform a hard delete
-#         user = self.request.user if self.request.user.is_authenticated else None
-#         action.send(user or instance, verb='deleted a supplier', target=instance)
-#         instance.delete()
+    def get_serializer_class(self):
+        # For GET and PUT, we use appropriate serializers.
+        if self.request.method == 'GET':
+            return SupplierReadSerializer
+        # For both PUT (full update) and PATCH (partial update) we use the write serializer.
+        return SupplierWriteSerializer
 
-#     @swagger_auto_schema(
-#         tags=['Suppliers'],
-#         operation_description="Retrieve a supplier by its primary key.",
-#         responses={
-#             200: SupplierReadSerializer,
-#             404: openapi.Response(
-#                 description="Supplier not found.",
-#                 examples={"application/json": {"detail": "Not found."}}
-#             ),
-#             401: openapi.Response(
-#                 description="Unauthorized access.",
-#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-#             )
-#         },
-#         manual_parameters=[
-#             openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
-#         ]
-#     )
-#     def get(self, request, *args, **kwargs):
-#         """
-#         Retrieve a supplier by its primary key.
-#         """
-#         return super().get(request, *args, **kwargs)
+    def perform_destroy(self, instance):
+        # Log deletion and perform a hard delete.
+        user = self.request.user if self.request.user.is_authenticated else None
+        action.send(user or instance, verb='deleted a supplier', target=instance)
+        instance.delete()
 
-#     @swagger_auto_schema(
-#         tags=['Suppliers'],
-#         operation_description="Update a supplier by its primary key.",
-#         request_body=SupplierWriteSerializer,
-#         responses={
-#             200: SupplierReadSerializer,
-#             400: openapi.Response(
-#                 description="Invalid input.",
-#                 examples={"application/json": {"detail": "Validation error details."}}
-#             ),
-#             404: openapi.Response(
-#                 description="Supplier not found.",
-#                 examples={"application/json": {"detail": "Not found."}}
-#             ),
-#             401: openapi.Response(
-#                 description="Unauthorized access.",
-#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-#             )
-#         }
-#     )
-#     def put(self, request, *args, **kwargs):
-#         """
-#         Update a supplier by its primary key.
-#         """
-#         kwargs['partial'] = True  # Enable partial updates
-#         return super().put(request, *args, **kwargs)
+    @swagger_auto_schema(
+        tags=['Suppliers'],
+        operation_description="Retrieve a supplier by its primary key.",
+        responses={
+            200: SupplierReadSerializer,
+            404: openapi.Response(
+                description="Supplier not found.",
+                examples={"application/json": {"detail": "Not found."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        },
+        manual_parameters=[
+            openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
+        ]
+    )
+    def get(self, request, *args, **kwargs):
+        """Retrieve a supplier by its primary key."""
+        return super().get(request, *args, **kwargs)
 
-#     @swagger_auto_schema(
-#         tags=['Suppliers'],
-#         operation_description="Delete a supplier by its primary key.",
-#         responses={
-#             204: openapi.Response(description="Supplier deleted successfully."),
-#             404: openapi.Response(
-#                 description="Supplier not found.",
-#                 examples={"application/json": {"detail": "Not found."}}
-#             ),
-#             401: openapi.Response(
-#                 description="Unauthorized access.",
-#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-#             )
-#         },
-#         manual_parameters=[
-#             openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
-#         ]
-#     )
-#     def delete(self, request, *args, **kwargs):
-#         """
-#         Delete a supplier by its primary key.
-#         """
-#         return super().delete(request, *args, **kwargs)
+    @swagger_auto_schema(
+        tags=['Suppliers'],
+        operation_description="Perform a full update on a supplier by its primary key.",
+        request_body=SupplierWriteSerializer,
+        responses={
+            200: SupplierReadSerializer,
+            400: openapi.Response(
+                description="Invalid input.",
+                examples={"application/json": {"detail": "Validation error details."}}
+            ),
+            404: openapi.Response(
+                description="Supplier not found.",
+                examples={"application/json": {"detail": "Not found."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        }
+    )
+    def put(self, request, *args, **kwargs):
+        """Full update of a supplier record and also support partial updates"""
+        kwargs['partial'] = True  # Enable partial updates
+        return super().put(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        tags=['Suppliers'],
+        operation_description="Perform a partial update on a supplier by its primary key.",
+        request_body=SupplierWriteSerializer,
+        responses={
+            200: SupplierReadSerializer,
+            400: openapi.Response(
+                description="Invalid input.",
+                examples={"application/json": {"detail": "Validation error details."}}
+            ),
+            404: openapi.Response(
+                description="Supplier not found.",
+                examples={"application/json": {"detail": "Not found."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        }
+    )
+    def patch(self, request, *args, **kwargs):
+        """Partial update of a supplier record."""
+        kwargs['partial'] = True  # Enable partial updates
+        return super().patch(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        tags=['Suppliers'],
+        operation_description="Delete a supplier by its primary key.",
+        responses={
+            204: openapi.Response(description="Supplier deleted successfully."),
+            404: openapi.Response(
+                description="Supplier not found.",
+                examples={"application/json": {"detail": "Not found."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        },
+        manual_parameters=[
+            openapi.Parameter('pk', openapi.IN_PATH, description="Primary key of the supplier", type=openapi.TYPE_INTEGER)
+        ]
+    )
+    def delete(self, request, *args, **kwargs):
+        """Delete a supplier record by its primary key."""
+        return super().delete(request, *args, **kwargs)
 
 
 
