@@ -107,6 +107,7 @@ class EquipmentReadSerializer(serializers.ModelSerializer):
             'department',
             'manufacturer',
             'model',
+            'supplier',
             'supplier_name',
             'location',
             'description',
@@ -114,6 +115,7 @@ class EquipmentReadSerializer(serializers.ModelSerializer):
             'manual',
             'manufacturing_date',
             'decommission_date',
+            'added_by',
             'added_by_name',
             'created',
             'modified'
@@ -160,9 +162,11 @@ class EquipmentMaintenanceActivityReadSerializer(serializers.ModelSerializer):
         model = EquipmentMaintenanceActivity
         fields = [
             'id',
+            'equipment',
             'equipment_name',
             'activity_type',
             'date_time',
+            'technician',
             'technician_name',
             'pre_status',
             'post_status',
@@ -177,6 +181,9 @@ class EquipmentMaintenanceActivityReadSerializer(serializers.ModelSerializer):
 # -------------------------------
 class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
     technician = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    equipment = serializers.PrimaryKeyRelatedField(queryset=Equipment.objects.all(), required=False)
+    for_all_equipment = serializers.BooleanField(default=False)
+    
 
     class Meta:
         model = MaintenanceSchedule
@@ -215,8 +222,10 @@ class MaintenanceScheduleReadSerializer(serializers.ModelSerializer):
         model = MaintenanceSchedule
         fields = [
             'id',
+            'equipment',
             'equipment_name',
             'for_all_equipment',
+            'technician',
             'technician_name',
             'title',
             'description',
