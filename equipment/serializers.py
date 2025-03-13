@@ -9,16 +9,6 @@ from .models import Equipment, EquipmentMaintenanceActivity, MaintenanceSchedule
 User = get_user_model()
 
 
-class CloudinaryPublicIdField(serializers.CharField):
-    def to_internal_value(self, data):
-        # If data is a string and starts with the unwanted prefix, remove it.
-        if isinstance(data, str):
-            prefix = "image/upload/"
-            if data.startswith(prefix):
-                data = data[len(prefix):]
-        return super().to_internal_value(data)
-    
-
 # -------------------------------
 # SUPPLIER SERIALIZERS
 # -------------------------------
@@ -52,9 +42,8 @@ class SupplierReadSerializer(serializers.ModelSerializer):
 # -------------------------------
 class EquipmentWriteSerializer(serializers.ModelSerializer):
     supplier = serializers.PrimaryKeyRelatedField(queryset=Supplier.objects.all())
-    image = CloudinaryPublicIdField(required=False, allow_blank=True)
-    manual = CloudinaryPublicIdField(required=False, allow_blank=True)
-    
+    image = serializers.CharField(required=False, allow_blank=True)
+    manual = serializers.CharField(required=False, allow_blank=True)
     
     class Meta:
         model = Equipment
@@ -81,6 +70,20 @@ class EquipmentWriteSerializer(serializers.ModelSerializer):
             'created',
             'modified'
         ]
+        
+    def validate_image(self, value):
+        # Remove the "image/upload/" prefix if it exists.
+        prefix = "image/upload/"
+        if value and isinstance(value, str) and value.startswith(prefix):
+            return value[len(prefix):]
+        return value
+
+    def validate_manual(self, value):
+        # Remove the "image/upload/" prefix if it exists.
+        prefix = "image/upload/"
+        if value and isinstance(value, str) and value.startswith(prefix):
+            return value[len(prefix):]
+        return value
 
     def create(self, validated_data):
         request = self.context.get('request')

@@ -3,7 +3,6 @@ from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import get_user_model
 from datetime import timedelta
 from django.utils import timezone
-from autoslug import AutoSlugField
 from model_utils.models import TimeStampedModel
 from model_utils import Choices
 from cloudinary.models import CloudinaryField
