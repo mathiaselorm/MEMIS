@@ -111,12 +111,6 @@ class SupplierDetailView(generics.RetrieveUpdateDestroyAPIView):
         # For both PUT (full update) and PATCH (partial update) we use the write serializer.
         return SupplierWriteSerializer
 
-    def perform_destroy(self, instance):
-        # Log deletion and perform a hard delete.
-        user = self.request.user if self.request.user.is_authenticated else None
-        action.send(user or instance, verb='deleted a supplier', target=instance)
-        instance.delete()
-
     @swagger_auto_schema(
         tags=['Suppliers'],
         operation_description="Retrieve a supplier by its primary key.",
