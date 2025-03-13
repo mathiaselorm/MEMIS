@@ -42,8 +42,8 @@ class SupplierReadSerializer(serializers.ModelSerializer):
 # -------------------------------
 class EquipmentWriteSerializer(serializers.ModelSerializer):
     supplier = serializers.PrimaryKeyRelatedField(queryset=Supplier.objects.all())
-    image = serializers.CharField(required=False, allow_blank=True)
-    manual = serializers.CharField(required=False, allow_blank=True)
+    image = serializers.URLField(required=False, allow_blank=True, allow_null=True)
+    manual = serializers.URLField(required=False, allow_blank=True, allow_null=True)
     
     class Meta:
         model = Equipment
@@ -71,20 +71,17 @@ class EquipmentWriteSerializer(serializers.ModelSerializer):
             'modified'
         ]
         
-    def validate_image(self, value):
-        # Remove the "image/upload/" prefix if it exists.
-        prefix = "image/upload/"
-        if value and isinstance(value, str) and value.startswith(prefix):
-            return value[len(prefix):]
-        return value
-
-    def validate_manual(self, value):
-        # Remove the "image/upload/" prefix if it exists.
-        prefix = "image/upload/"
-        if value and isinstance(value, str) and value.startswith(prefix):
-            return value[len(prefix):]
-        return value
-
+    def validate(self, data):
+        """
+        Remove 'image/upload/' prefix if present.
+        """
+        if "image" in data:
+            data["image"] = data["image"].replace("image/upload/", "") if data["image"] else None
+        if "manual" in data:
+            data["manual"] = data["manual"].replace("image/upload/", "") if data["manual"] else None
+        return data
+    
+    
     def create(self, validated_data):
         request = self.context.get('request')
         if request and hasattr(request, 'user'):
@@ -217,15 +214,28 @@ class MaintenanceScheduleWriteSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, data):
-        start_date, end_date = data['start_date'], data['end_date']
-        if end_date <= start_date:
+        """
+        Validate recurring_end is after start_date and required for recurring schedules.
+        """
+        start_date = data.get("start_date")
+        end_date = data.get("end_date")
+        recurring_end = data.get("recurring_end")
+
+        if end_date and end_date <= start_date:
             raise serializers.ValidationError("End date must be after start date.")
-        if data['frequency'] != 'once' and not data.get('recurring_end'):
-            raise serializers.ValidationError("Recurring schedules must have an 'recurring_end' date.")
-        if data['for_all_equipment'] and data.get('equipment'):
-            raise serializers.ValidationError("A schedule for all equipment cannot be linked to specific equipment.")
-        if not data['for_all_equipment'] and not data.get('equipment'):
+
+        if data.get("frequency") != "once":
+            if not recurring_end:
+                raise serializers.ValidationError("Recurring schedules must have a 'recurring_end' date.")
+            if recurring_end <= start_date:
+                raise serializers.ValidationError("Recurring end date must be after start date.")
+
+        if data.get("for_all_equipment") and data.get("equipment"):
+            raise serializers.ValidationError("A schedule for all equipment cannot be linked to a specific equipment.")
+
+        if not data.get("for_all_equipment") and not data.get("equipment"):
             raise serializers.ValidationError("Equipment is required for non-general maintenance schedules.")
+
         return data
 
 

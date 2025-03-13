@@ -93,13 +93,11 @@ class Equipment(TimeStampedModel):
     )
     manufacturing_date = models.DateField()
     description = models.TextField(blank=True, null=True)
-    image = CloudinaryField(
-        'image',
+    image = models.URLField(
         blank=True,
         null=True,
     )
-    manual = CloudinaryField(
-        'manual',
+    manual = models.URLField(
         blank=True,
         null=True,
     )
