@@ -138,6 +138,70 @@ class Command(BaseCommand):
                 "quantity": 300,
                 "location": "Pharmacy - Aisle 2",
             },
+            {
+                "name": "ECG Electrode Pads (Box of 50)",
+                "item_code": "INV-ECG-001",
+                "category": "consumable",
+                "description": "Disposable electrode pads for ECG machines ensuring accurate signal acquisition.",
+                "quantity": 50,
+                "location": "Cardiology Supply Room"
+            },
+            {
+                "name": "Defibrillator Battery Pack",
+                "item_code": "INV-DEF-001",
+                "category": "critical",
+                "description": "Replacement battery pack for defibrillators; critical for cardiac emergency operations.",
+                "quantity": 2,
+                "location": "Critical Components Storage"
+            },
+            {
+                "name": "Ultrasound Probe Transducer",
+                "item_code": "INV-US-001",
+                "category": "replacement",
+                "description": "High-resolution transducer for portable ultrasound machines used in diagnostic imaging.",
+                "quantity": 3,
+                "location": "Imaging Department Storage"
+            },
+            {
+                "name": "Sterilization Tray",
+                "item_code": "INV-STER-001",
+                "category": "maintenance",
+                "description": "Stainless steel tray for holding surgical instruments during sterilization cycles.",
+                "quantity": 10,
+                "location": "Surgical Equipment Room"
+            },
+            {
+                "name": "Infusion Pump Circuit Set",
+                "item_code": "INV-INF-001",
+                "category": "consumable",
+                "description": "Disposable circuit sets for infusion pumps ensuring sterile fluid delivery.",
+                "quantity": 25,
+                "location": "Inpatient Supplies"
+            },
+            {
+                "name": "Ventilator Filter Cartridge",
+                "item_code": "INV-VEN-001",
+                "category": "replacement",
+                "description": "High-efficiency filter cartridge for ventilators to maintain clean airflow.",
+                "quantity": 8,
+                "location": "ICU Equipment Storage"
+            },
+            {
+                "name": "Disposable Surgical Gloves (Box of 100)",
+                "item_code": "INV-GLOVES-001",
+                "category": "consumable",
+                "description": "Sterile, disposable surgical gloves for maintaining aseptic conditions in the OR.",
+                "quantity": 50,
+                "location": "Operating Room Supplies"
+            },
+             {
+                "name": "Respiratory Filter for Ventilator",
+                "item_code": "INV-RESP-001",
+                "category": "replacement",
+                "description": "High-efficiency respiratory filter for ventilators to maintain optimal air quality.",
+                "quantity": 7,
+                "location": "ICU Supplies Storage"
+            },
         ]
 
         self.stdout.write('Populating inventory items...')

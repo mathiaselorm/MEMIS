@@ -1,7 +1,9 @@
 # inventory/views.py
 
-from django.db.models import F, Value, CharField, Case, When
+from django.db.models import F, Value, CharField, Case, When, Sum
 from rest_framework import generics, filters, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend, CharFilter, FilterSet
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -188,3 +190,57 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
                 description=f"Item: '{instance.name}' (Code: {instance.item_code})"
             )
         return response
+
+
+
+class TotalInventoryView(APIView):
+    """
+    Retrieve total inventory information.
+    
+    Returns:
+      - total_items: The number of inventory records.
+      - total_stock: The sum of the 'quantity' field across all items.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        tags=['Inventory'],
+        operation_description="Get total inventory count and total stock quantity.",
+        responses={
+            200: openapi.Response(
+                description="Total inventory retrieved successfully.",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        "total_items": openapi.Schema(
+                            type=openapi.TYPE_INTEGER,
+                            description="Total number of inventory items."
+                        ),
+                        "total_stock": openapi.Schema(
+                            type=openapi.TYPE_INTEGER,
+                            description="Total sum of item quantities."
+                        )
+                    }
+                ),
+                examples={
+                    "application/json": {
+                        "total_items": 15,
+                        "total_stock": 320
+                    }
+                }
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        }
+    )
+    def get(self, request, format=None):
+        total_items = Item.objects.count()
+        # Sum up the quantity field. If no items exist, default to 0.
+        total_stock = Item.objects.aggregate(total=Sum('quantity'))['total'] or 0
+
+        return Response({
+            "total_items": total_items,
+            "total_stock": total_stock
+        })
