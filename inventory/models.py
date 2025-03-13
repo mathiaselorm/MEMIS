@@ -17,7 +17,7 @@ class Item(TimeStampedModel):
     name = models.CharField(max_length=255, db_index=True)
     item_code = models.CharField(max_length=100, unique=True)
     category = models.CharField(max_length=50, choices=CATEGORY_CHOICES)
-    description = models.TextField(blank=True)    
+    description = models.TextField(blank=True, null=True)    
     quantity = models.PositiveIntegerField(default=0)
     location = models.CharField(max_length=255)
 

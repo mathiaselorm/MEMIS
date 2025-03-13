@@ -82,6 +82,8 @@ CELERY_TASK_ALWAYS_EAGER = False  # Set to True only for local development if ne
 
 BROKER_TRANSPORT_OPTIONS = {
     "max_connections": 2,
+    "socket_keepalive": True,     
+    "retry_on_timeout": True, 
 }
 
 # Logging for Celery workers
