@@ -41,9 +41,9 @@ class SupplierReadSerializer(serializers.ModelSerializer):
 # -------------------------------
 class EquipmentWriteSerializer(serializers.ModelSerializer):
     supplier = serializers.PrimaryKeyRelatedField(queryset=Supplier.objects.all())
-    image = serializers.ImageField(allow_empty_file=True, use_url=True, required=False, allow_null=True)
-    manual = serializers.FileField(allow_empty_file=True, use_url=True, required=False, allow_null=True)
-
+    image = serializers.CharField(required=False, allow_blank=True)
+    manual = serializers.CharField(required=False, allow_blank=True)
+    
     class Meta:
         model = Equipment
         fields = [

@@ -74,7 +74,7 @@ class Equipment(TimeStampedModel):
         db_index=True
     )
     equipment_id = models.CharField(max_length=20, unique=True)
-    location = models.CharField(max_length=255)
+    location = models.CharField(max_length=255, blank=True, null=True)
     department = models.CharField(max_length=255, choices=DEPARTMENT, db_index=True)
 
     operational_status = models.CharField(
