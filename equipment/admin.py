@@ -49,7 +49,7 @@ class EquipmentAdmin(admin.ModelAdmin):
     readonly_fields = ('created', 'modified', 'added_by_name')
     fieldsets = (
         (None, {
-            'fields': ('name', 'device_type', 'serial_number', 'equipment_id', 'image')
+            'fields': ('name', 'device_type', 'serial_number', 'equipment_id', 'image', 'manual', 'location')
         }),
         ('Ownership', {
             'fields': ('operational_status', 'department', 'added_by', 'added_by_name')
