@@ -28,7 +28,7 @@ class Item(TimeStampedModel):
     def stock_status(self):
         if self.quantity == 0:
             return "Out of Stock"
-        elif self.quantity <= 2:
+        elif self.quantity <= 5:
             return "Low Stock"
         else:
             return "In Stock"
