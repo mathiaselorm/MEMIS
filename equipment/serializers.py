@@ -146,6 +146,8 @@ class EquipmentReadSerializer(serializers.ModelSerializer):
 # -------------------------------
 class EquipmentMaintenanceActivityWriteSerializer(serializers.ModelSerializer):
     technician = serializers.PrimaryKeyRelatedField(queryset=User.objects.all())
+    equipment = serializers.PrimaryKeyRelatedField(queryset=Equipment.objects.all())
+    date_time = serializers.DateTimeField()
 
     class Meta:
         model = EquipmentMaintenanceActivity

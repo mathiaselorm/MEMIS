@@ -44,14 +44,3 @@ urlpatterns = [
     
 ]
 
-
-
-
-
-
-
-    # Tracking endpoints
-    # path('assets/department/<str:identifier>/', views.TrackingByDepartmentView.as_view(), name='assets-by-department'),
-    # path('assets/status/', views.TrackingByOperationalStatusView.as_view(), name='assets-by-operational-status'),
-    # path('assets/softdeleted/', views.SoftDeletedAssetsView.as_view(), name='soft-deleted-assets'),
-    # path('assets/<int:pk>/delete/', views.permanent_delete_asset, name='delete-softdeleted-assets'),
