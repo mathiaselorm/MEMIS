@@ -175,7 +175,7 @@ class EquipmentMaintenanceActivityReadSerializer(serializers.ModelSerializer):
     class Meta:
         model = EquipmentMaintenanceActivity
         fields = [
-            'id',
+            'id', 
             'equipment',
             'equipment_name',
             'activity_type',
