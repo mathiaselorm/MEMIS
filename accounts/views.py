@@ -87,7 +87,7 @@ class UserRegistrationView(generics.CreateAPIView):
                 }
             ),
         },
-        tags=["Authentication"]
+        tags=["User Management"]
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
@@ -182,7 +182,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
     @swagger_auto_schema(
-        tags=["Authentication"],
+        tags=["login"],
         operation_description="Obtain JWT tokens for authenticated users.",
         operation_summary="Obtain JWT tokens",
         responses={200: "Tokens obtained", 400: "Bad Request"}
