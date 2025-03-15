@@ -120,7 +120,7 @@ class MaintenanceScheduleAdmin(admin.ModelAdmin):
     readonly_fields = ('last_notification', 'created', 'modified')
     fieldsets = (
         (None, {
-            'fields': ('title', 'description', 'start_date', 'end_date', 'frequency', 'interval', 'recurring_end')
+            'fields': ('title', 'description', 'start_date', 'end_date', 'frequency', 'interval', 'recurring_end', 'technician')
         }),
         ('General or Equipment-Specific', {
             'fields': ('for_all_equipment', 'equipment')
