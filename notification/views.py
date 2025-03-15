@@ -104,7 +104,7 @@ class NotificationDetailView(generics.RetrieveUpdateAPIView):
     operation_description="Mark all notifications as read.",
     responses={200: "All notifications marked as read."}
 )
-@api_view(['POST'])
+@api_view(['POST']) 
 def mark_all_notifications_read(request):
     user = request.user
     if not user.is_authenticated:

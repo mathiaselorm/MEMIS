@@ -9,11 +9,6 @@ class AccountsConfig(AppConfig):
     
     def ready(self):
         import accounts.signals
-        from actstream import registry
-
-        
-        from .models import CustomUser
-        registry.register(CustomUser)
         
         
         

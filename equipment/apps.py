@@ -7,8 +7,3 @@ class EquipmentConfig(AppConfig):
 
     def ready(self):
         import equipment.signals
-        from actstream import registry
-
-        
-        from .models import Equipment
-        registry.register(Equipment)
