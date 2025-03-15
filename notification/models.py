@@ -12,7 +12,7 @@ class Notification(TimeStampedModel):
         on_delete=models.CASCADE, 
         related_name='notifications'
     )
-    message = models.TextField()
+    message = models.TextField(blank=True, null=True)
     link = models.URLField(blank=True, null=True)  # Link to related details
     is_read = models.BooleanField(default=False, db_index=True)
 
