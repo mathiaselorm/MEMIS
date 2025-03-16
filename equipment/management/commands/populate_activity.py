@@ -14,7 +14,7 @@ class Command(BaseCommand):
         "and ensuring no collisions (same eq, same activity_type, same datetime)."
     )
 
-    START_DATE = datetime(2024, 11, 1)
+    START_DATE = datetime(2025, 1, 1)
     END_DATE = datetime(2025, 3, 31, 23, 59, 59)
 
     def add_arguments(self, parser):
