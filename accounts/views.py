@@ -16,7 +16,6 @@ from django.core.exceptions import ValidationError
 from django.conf import settings
 from datetime import timedelta
 from django.middleware.csrf import get_token
-from actstream import action
 
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -97,14 +96,8 @@ class UserRegistrationView(generics.CreateAPIView):
 
         # Get the user's full name 
         full_name = user.get_full_name()
+        logger.info(f"User created: {full_name}")
 
-        # Record the creation in the activity stream
-        action.send(
-            self.request.user,
-            verb='created user',
-            target=user,
-            description=f"User created: {full_name}"
-        )
     def create(self, request, *args, **kwargs):
         # Override the create method to customize the response
         response = super().create(request, *args, **kwargs)
@@ -258,11 +251,6 @@ class PasswordChangeView(generics.UpdateAPIView):
             # Send password change email notification
             send_password_change_email(user.id)
 
-            # Record the password change in the activity stream 
-            action.send(
-                user,
-                verb='changed password'
-            )
             
             return Response({"detail": _("Your password has been changed successfully.")}, status=status.HTTP_200_OK)
 
@@ -308,13 +296,6 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        # Log and Record the update in the activity stream
-        action.send(
-            request.user,
-            verb='updated user',
-            target=user,
-            description="User details updated."
-        )
         logger.info(f"User {request.user.get_full_name()} updated details for {user.get_full_name()}.")
 
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -324,17 +305,8 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
         Delete the user account.
         """
         user = self.get_object()
-
-        # Record the user deletion in the activity stream
-        action.send(
-            request.user,
-            verb='deleted user',
-            target=user,
-            description="User account deleted."
-        )
+        
         logger.info(f"User {request.user.get_full_name()} deleted user {user.get_full_name()}.")
-
-
         # Perform deletion by calling the superclass method
         return super().destroy(request, *args, **kwargs)
 

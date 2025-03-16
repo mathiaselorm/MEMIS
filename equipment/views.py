@@ -6,7 +6,6 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.decorators import api_view, permission_classes
-from actstream import action
 
 from .models import (
     Equipment, Supplier, EquipmentMaintenanceActivity,
@@ -300,8 +299,6 @@ class EquipmentDetail(RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         user = self.request.user if self.request.user.is_authenticated else None
-        # Log deletion and perform hard delete
-        action.send(user or instance, verb='deleted equipment', target=instance)
         instance.delete()
 
     @swagger_auto_schema(
@@ -1187,12 +1184,6 @@ def deactivate_schedule(request, pk):
         return Response({'detail': 'Not allowed.'}, status=status.HTTP_403_FORBIDDEN)
     schedule.is_active = False
     schedule.save()
-    # Record that the schedule was deactivated
-    action.send(
-        request.user,
-        verb='deactivated maintenance schedule',
-        target=schedule
-    )
     return Response({'detail': 'Schedule deactivated.'}, status=status.HTTP_200_OK)
 
 

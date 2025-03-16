@@ -6,8 +6,7 @@ from django.db.models import Q
 from .models import CustomUser
 from .forms import CustomUserCreationForm, CustomUserChangeForm
 
-# Import django-activity-stream for logging deletions
-from actstream import action
+
 
 class CustomUserAdmin(BaseUserAdmin):
     add_form = CustomUserCreationForm  # For adding new users
@@ -55,13 +54,6 @@ class CustomUserAdmin(BaseUserAdmin):
         # Actually delete the user
         obj.delete()
         
-        # Record the deletion in django-activity-stream
-        action.send(
-            request.user,
-            verb='deleted user',
-            target=obj,
-            description=f"User deleted: {user_full_name}"
-        )
         
         messages.success(
             request,
@@ -76,12 +68,6 @@ class CustomUserAdmin(BaseUserAdmin):
             user_full_name = obj.get_full_name()
             obj.delete()
             # Log each deletion
-            action.send(
-                request.user,
-                verb='deleted user',
-                target=obj,
-                description=f"User deleted: {user_full_name}"
-            )
 
         messages.success(request, _("Selected users were deleted successfully."))
 

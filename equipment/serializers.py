@@ -3,7 +3,6 @@ from django.utils import timezone
 from django.db import transaction
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from actstream import action
 from .models import Equipment, EquipmentMaintenanceActivity, MaintenanceSchedule, Supplier
 
 User = get_user_model()

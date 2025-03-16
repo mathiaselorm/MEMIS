@@ -7,7 +7,6 @@ from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django_rest_passwordreset.models import ResetPasswordToken
 from django_rest_passwordreset.signals import reset_password_token_created
-from actstream import action
 from datetime import timedelta
 
 
@@ -275,14 +274,6 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
         instance.save()
 
         request_user = self.context['request'].user
-        action.send(
-            request_user,
-            verb='assigned role',
-            target=instance,
-            description=(
-                f"Changed role to {instance.get_user_role_display()} for user {instance.get_full_name()}"
-            )
-        )
 
         return instance
 

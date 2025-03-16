@@ -1,5 +1,6 @@
 # inventory/views.py
 
+import logging
 from django.db.models import F, Value, CharField, Case, When, Sum
 from rest_framework import generics, filters, status
 from rest_framework.response import Response
@@ -10,8 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 
-# Import django-activity-stream
-from actstream import action
+
 
 # Local imports
 from accounts.permissions import IsAdminOrSuperAdmin
@@ -20,6 +20,8 @@ from .serializers import (
     ItemReadSerializer, ItemWriteSerializer,
 )
 
+# Configure logger
+logger = logging.getLogger(__name__)
 
 
 
@@ -68,12 +70,8 @@ class ItemListCreateView(generics.ListCreateAPIView):
             item_id = response.data.get('id')
             try:
                 item_instance = Item.objects.get(id=item_id)
-                action.send(
-                    request.user,
-                    verb='created inventory item',
-                    target=item_instance,
-                    description=f"Item: '{item_instance.name}' (Code: {item_instance.item_code})"
-                )
+                logger.info(f"User {request.user.email} created inventory item: '{item_instance.name}' (Code: {item_instance.item_code})")
+
             except Item.DoesNotExist:
                 pass
         return response
@@ -98,12 +96,7 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         Permanently delete the item and log the deletion event.
         """
         user = self.request.user
-        action.send(
-            user,
-            verb='deleted item',
-            target=instance,
-            description=f"Item: '{instance.name}' (Code: {instance.item_code})"
-        )
+        logger.info(f"User {user.email} deleted item: '{instance.name}' (Code: {instance.item_code})")
         instance.delete()
 
     @swagger_auto_schema(
@@ -183,12 +176,8 @@ class ItemDetailView(generics.RetrieveUpdateDestroyAPIView):
         response = super().update(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
             instance = self.get_object()
-            action.send(
-                request.user,
-                verb='updated item',
-                target=instance,
-                description=f"Item: '{instance.name}' (Code: {instance.item_code})"
-            )
+            logger.info(f"User {request.user.email} updated item: '{instance.name}' (Code: {instance.item_code})")
+                        
         return response
 
 
