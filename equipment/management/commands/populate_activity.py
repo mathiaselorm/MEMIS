@@ -40,13 +40,13 @@ class Command(BaseCommand):
             ))
             return
 
-        # 1) Retrieve all users from the CustomUser table and use them as potential technicians.
-        valid_techs = list(CustomUser.objects.all())
+        # Retrieve all non-superuser accounts from the CustomUser table for technician assignment.
+        valid_techs = list(CustomUser.objects.filter(is_superuser=False))
         if not valid_techs:
-            self.stdout.write(self.style.ERROR("No users found in the CustomUser table. Aborting."))
+            self.stdout.write(self.style.ERROR("No non-superuser accounts found in the CustomUser table. Aborting."))
             return
 
-        # 2) Retrieve all equipment records.
+        # Retrieve all equipment records.
         equipment_list = list(Equipment.objects.order_by("id"))
         if not equipment_list:
             self.stdout.write(self.style.ERROR("No equipment in the DB. Please create equipment first."))
@@ -58,7 +58,7 @@ class Command(BaseCommand):
             )
         )
 
-        # 3) The activity templates.
+        # The activity templates.
         templates = [
             {
                 "activity_type": "preventive maintenance",
@@ -87,18 +87,17 @@ class Command(BaseCommand):
             },
         ]
 
-        # Helper: random datetime in [START_DATE..END_DATE], converted to an aware datetime.
+        # Helper: random datetime in [START_DATE..END_DATE] as an aware datetime.
         def random_aware_datetime():
             total_secs = int((self.END_DATE - self.START_DATE).total_seconds())
             rand_offset = random.randint(0, total_secs)
             naive_dt = self.START_DATE + timedelta(seconds=rand_offset)
             return timezone.make_aware(naive_dt, timezone.get_default_timezone())
 
-        # Store used (activity_type, datetime) combos per equipment to avoid collisions.
+        # Store used (activity_type, datetime) combinations per equipment to avoid collisions.
         used_times_per_equipment = {}
 
         total_created = 0
-        tech_index = 0
 
         with transaction.atomic():
             for eq in equipment_list:
@@ -108,13 +107,13 @@ class Command(BaseCommand):
                 records_for_this_equipment = random.randint(min_records, max_records)
 
                 for _ in range(records_for_this_equipment):
-                    # Randomly select a technician from all users.
+                    # Randomly select a technician from valid non-superuser accounts.
                     assigned_tech = random.choice(valid_techs)
 
                     # Randomly pick a template.
                     tpl = random.choice(templates)
 
-                    # Generate a random datetime, ensuring no collision for (activity_type, datetime)
+                    # Generate a random datetime ensuring no collision for (activity_type, datetime)
                     while True:
                         dt_aware = random_aware_datetime()
                         dt_key = (tpl["activity_type"], dt_aware.strftime("%Y-%m-%d %H:%M:%S"))

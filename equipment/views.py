@@ -24,6 +24,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from accounts.permissions import IsAdminOrSuperAdmin
 from django.db.models import Q, Count, functions
+from django.db.models.functions import ExtractMonth
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 import logging
@@ -858,57 +859,6 @@ class MaintenanceActivitiesDetailByEquipmentView(generics.RetrieveAPIView):
         """
         return super().get(request, *args, **kwargs)
 
-    # @swagger_auto_schema(
-    #     tags=['Equipment Activities'],
-    #     operation_description="Update an activity for a specific equipment. Supports partial updates.",
-    #     request_body=EquipmentMaintenanceActivityWriteSerializer,
-    #     responses={
-    #         200: openapi.Response(
-    #             description="Activity updated successfully.",
-    #             schema=EquipmentMaintenanceActivityReadSerializer,
-    #         ),
-    #         400: openapi.Response(
-    #             description="Invalid data provided.",
-    #             examples={"application/json": {"detail": "Validation error details."}}
-    #         ),
-    #         404: openapi.Response(
-    #             description="Activity not found.",
-    #             examples={"application/json": {"detail": "Not found."}}
-    #         ),
-    #         401: openapi.Response(
-    #             description="Unauthorized access.",
-    #             examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-    #         )
-    #     }
-    # )
-    # def put(self, request, *args, **kwargs):
-    #     """
-    #     Update an activity for a specific equipment. Supports partial updates.
-    #     """
-    #     kwargs['partial'] = True
-    #     return super().put(request, *args, **kwargs)
-
-    # @swagger_auto_schema(
-    #     tags=['Equipment Activities'],
-    #     operation_description="Delete an activity for a specific equipment.",
-    #     responses={
-    #         204: openapi.Response(description="Activity deleted successfully."),
-    #         404: openapi.Response(
-    #             description="Activity not found.",
-    #             examples={"application/json": {"detail": "Not found."}}
-    #         ),
-    #         401: openapi.Response(
-    #             description="Unauthorized access.",
-    #             examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-    #         )
-    #     }
-    # )
-    # def delete(self, request, *args, **kwargs):
-    #     """
-    #     Delete an activity for a specific equipment.
-    #     """
-    #     return super().delete(request, *args, **kwargs)
-
 
 
 class MaintenanceActivitiesListCreateView(generics.ListCreateAPIView):
@@ -1013,6 +963,124 @@ class MaintenanceActivitiesDetailView(generics.RetrieveAPIView):
         Retrieve an maintenance report by its primary key.
         """
         return super().get(request, *args, **kwargs)
+
+
+
+
+class EquipmentMaintenanceActivityYearlyOverviewView(APIView):
+    """
+    Returns monthly counts of maintenance activities for a single equipment (by ID)
+    filtered by a specified year (defaults to current year if not provided).
+    """
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="""
+            Returns an array of 12 objects (one for each month) with the counts of:
+            - Preventive Maintenance
+            - Repair
+            - Calibration
+            for a given equipment in a given year.
+            
+            Example response:
+            [
+              {
+                "month": 1,
+                "preventive_maintenance": 5,
+                "repair": 3,
+                "calibration": 2
+              },
+              ...
+            ]
+        """,
+        manual_parameters=[
+            openapi.Parameter(
+                'year',
+                openapi.IN_QUERY,
+                description="Year to filter by (e.g. 2024). Defaults to current year if omitted.",
+                type=openapi.TYPE_INTEGER,
+                required=False
+            )
+        ],
+        responses={
+            200: openapi.Response(
+                description="Monthly activity counts for the specified equipment.",
+                examples={
+                    "application/json": [
+                        {
+                            "month": 1,
+                            "preventive_maintenance": 5,
+                            "repair": 2,
+                            "calibration": 1
+                        },
+                        {
+                            "month": 2,
+                            "preventive_maintenance": 3,
+                            "repair": 0,
+                            "calibration": 2
+                        },
+                        ...
+                    ]
+                }
+            )
+        },
+        tags=["Maintenance Reports"]
+    )
+    def get(self, request, equipment_id):
+        # 1. Validate that the equipment exists
+        get_object_or_404(Equipment, id=equipment_id)
+
+        # 2. Parse the 'year' query param or default to the current year
+        year_str = request.query_params.get('year')
+        if year_str is not None:
+            try:
+                year = int(year_str)
+            except ValueError:
+                year = timezone.now().year
+        else:
+            year = timezone.now().year
+
+        # 3. Filter activities for this equipment + the given year
+        queryset = (
+            EquipmentMaintenanceActivity.objects
+            .filter(equipment_id=equipment_id, date_time__year=year)
+        )
+
+        # 4. Group by month + activity_type, then count
+        #    We'll use ExtractMonth to group by the integer month (1..12).
+        grouped_qs = (
+            queryset
+            .annotate(month=ExtractMonth('date_time'))
+            .values('month', 'activity_type')
+            .annotate(count=Count('id'))
+            .order_by('month')
+        )
+
+        # 5. Initialize a structure to store monthly counts
+        #    Keys: 1..12; each month has a dict for each activity_type
+        data_by_month = defaultdict(lambda: {
+            'preventive maintenance': 0,
+            'repair': 0,
+            'calibration': 0
+        })
+
+        # 6. Fill data_by_month with actual counts from the DB
+        for row in grouped_qs:
+            m = row['month'] or 0  # In rare cases, month can be None if date_time is incomplete
+            atype = row['activity_type']
+            data_by_month[m][atype] = row['count']
+
+        # 7. Build final response: 12 objects, one for each month
+        final_data = []
+        for m in range(1, 13):
+            final_data.append({
+                'month': m,
+                'preventive_maintenance': data_by_month[m]['preventive maintenance'],
+                'repair': data_by_month[m]['repair'],
+                'calibration': data_by_month[m]['calibration'],
+            })
+
+        return Response(final_data)
 
 
 

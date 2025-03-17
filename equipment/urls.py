@@ -32,7 +32,8 @@ urlpatterns = [
     
     # # Equipment Maintenance Reports
     path('equipment/<int:equipment_id>/maintenance-reports/', views.MaintenanceActivitiesByEquipmentView.as_view(), name='equipment-activities'),
-    path('equipment/<int:pk>/reports/<int:activity_id>/', views.MaintenanceActivitiesDetailByEquipmentView.as_view(), name='equipment-activity-detail-by-equipment'),
+    path('equipment/<int:equipment_id>/maintenance-reports/<int:activity_id>/', views.MaintenanceActivitiesDetailByEquipmentView.as_view(), name='equipment-activity-detail-by-equipment'),
+    path('equipment/<int:equipment_id>/maintenance-reports/yearly-overview/', views.EquipmentMaintenanceActivityYearlyOverviewView.as_view(), name='equipment-activity-yearly-overview'),
     
     # Upcoming maintenance schedules for the current month
     path('maintenance/upcoming-schedules/', views.UpcomingMaintenanceScheduleView.as_view(), name='upcoming-maintenance-schedules'),
