@@ -797,6 +797,118 @@ class MaintenanceActivitiesByEquipmentView(generics.ListCreateAPIView):
         return super().post(request, *args, **kwargs)
 
 
+class MaintenanceActivitiesDetailByEquipmentView(generics.RetrieveAPIView):
+    """
+    Retrieve an activity for a specific equipment.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        equipment_id = self.kwargs.get('equipment_id')
+        return EquipmentMaintenanceActivity.objects.filter(equipment_id=equipment_id)
+
+    def get_object(self):
+        queryset = self.get_queryset()
+        activity_id = self.kwargs.get('activity_id')
+        obj = get_object_or_404(queryset, id=activity_id)
+        return obj
+
+    def get_serializer_class(self):
+        if self.request.method == 'GET':
+            return EquipmentMaintenanceActivityReadSerializer
+        else:
+            return EquipmentMaintenanceActivityWriteSerializer
+
+
+    @swagger_auto_schema(
+        tags=['Equipment Activities'],
+        operation_description="Retrieve an activity for a specific equipment.",
+        manual_parameters=[
+            openapi.Parameter(
+                'equipment_id', openapi.IN_PATH,
+                description="ID of the equipment",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            ),
+            openapi.Parameter(
+                'activity_id', openapi.IN_PATH,
+                description="ID of the activity",
+                type=openapi.TYPE_INTEGER,
+                required=True
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Activity retrieved successfully.",
+                schema=EquipmentMaintenanceActivityReadSerializer,
+            ),
+            404: openapi.Response(
+                description="Activity not found.",
+                examples={"application/json": {"detail": "Not found."}}
+            ),
+            401: openapi.Response(
+                description="Unauthorized access.",
+                examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+            )
+        }
+    )
+    def get(self, request, *args, **kwargs):
+        """
+        Retrieve an activity for a specific equipment.
+        """
+        return super().get(request, *args, **kwargs)
+
+    # @swagger_auto_schema(
+    #     tags=['Equipment Activities'],
+    #     operation_description="Update an activity for a specific equipment. Supports partial updates.",
+    #     request_body=EquipmentMaintenanceActivityWriteSerializer,
+    #     responses={
+    #         200: openapi.Response(
+    #             description="Activity updated successfully.",
+    #             schema=EquipmentMaintenanceActivityReadSerializer,
+    #         ),
+    #         400: openapi.Response(
+    #             description="Invalid data provided.",
+    #             examples={"application/json": {"detail": "Validation error details."}}
+    #         ),
+    #         404: openapi.Response(
+    #             description="Activity not found.",
+    #             examples={"application/json": {"detail": "Not found."}}
+    #         ),
+    #         401: openapi.Response(
+    #             description="Unauthorized access.",
+    #             examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+    #         )
+    #     }
+    # )
+    # def put(self, request, *args, **kwargs):
+    #     """
+    #     Update an activity for a specific equipment. Supports partial updates.
+    #     """
+    #     kwargs['partial'] = True
+    #     return super().put(request, *args, **kwargs)
+
+    # @swagger_auto_schema(
+    #     tags=['Equipment Activities'],
+    #     operation_description="Delete an activity for a specific equipment.",
+    #     responses={
+    #         204: openapi.Response(description="Activity deleted successfully."),
+    #         404: openapi.Response(
+    #             description="Activity not found.",
+    #             examples={"application/json": {"detail": "Not found."}}
+    #         ),
+    #         401: openapi.Response(
+    #             description="Unauthorized access.",
+    #             examples={"application/json": {"detail": "Authentication credentials were not provided."}}
+    #         )
+    #     }
+    # )
+    # def delete(self, request, *args, **kwargs):
+    #     """
+    #     Delete an activity for a specific equipment.
+    #     """
+    #     return super().delete(request, *args, **kwargs)
+
 
 
 class MaintenanceActivitiesListCreateView(generics.ListCreateAPIView):
@@ -1191,120 +1303,3 @@ def deactivate_schedule(request, pk):
 
 
 
-# class MaintenanceActivitiesDetailByEquipmentView(generics.RetrieveUpdateDestroyAPIView):
-#     """
-#     Retrieve, update, or delete an activity for a specific equipment.
-#     """
-#     permission_classes = [IsAuthenticated]
-
-#     def get_queryset(self):
-#         equipment_id = self.kwargs.get('equipment_id')
-#         return EquipmentMaintenanceActivity.objects.filter(equipment_id=equipment_id)
-
-#     def get_object(self):
-#         queryset = self.get_queryset()
-#         activity_id = self.kwargs.get('activity_id')
-#         obj = get_object_or_404(queryset, id=activity_id)
-#         return obj
-
-#     def get_serializer_class(self):
-#         if self.request.method == 'GET':
-#             return EquipmentMaintenanceActivityReadSerializer
-#         else:
-#             return EquipmentMaintenanceActivityWriteSerializer
-
-#     def put(self, request, *args, **kwargs):
-#         """
-#         Update an activity for a specific equipment. Supports partial updates.
-#         """
-#         kwargs['partial'] = True  # Allow partial updates
-#         return super().put(request, *args, **kwargs)
-
-#     @swagger_auto_schema(
-#         tags=['Equipment Activities'],
-#         operation_description="Retrieve an activity for a specific equipment.",
-#         manual_parameters=[
-#             openapi.Parameter(
-#                 'equipment_id', openapi.IN_PATH,
-#                 description="ID of the equipment",
-#                 type=openapi.TYPE_INTEGER,
-#                 required=True
-#             ),
-#             openapi.Parameter(
-#                 'activity_id', openapi.IN_PATH,
-#                 description="ID of the activity",
-#                 type=openapi.TYPE_INTEGER,
-#                 required=True
-#             ),
-#         ],
-#         responses={
-#             200: openapi.Response(
-#                 description="Activity retrieved successfully.",
-#                 schema=EquipmentMaintenanceActivityReadSerializer,
-#             ),
-#             404: openapi.Response(
-#                 description="Activity not found.",
-#                 examples={"application/json": {"detail": "Not found."}}
-#             ),
-#             401: openapi.Response(
-#                 description="Unauthorized access.",
-#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-#             )
-#         }
-#     )
-#     def get(self, request, *args, **kwargs):
-#         """
-#         Retrieve an activity for a specific equipment.
-#         """
-#         return super().get(request, *args, **kwargs)
-
-#     @swagger_auto_schema(
-#         tags=['Equipment Activities'],
-#         operation_description="Update an activity for a specific equipment. Supports partial updates.",
-#         request_body=EquipmentMaintenanceActivityWriteSerializer,
-#         responses={
-#             200: openapi.Response(
-#                 description="Activity updated successfully.",
-#                 schema=EquipmentMaintenanceActivityReadSerializer,
-#             ),
-#             400: openapi.Response(
-#                 description="Invalid data provided.",
-#                 examples={"application/json": {"detail": "Validation error details."}}
-#             ),
-#             404: openapi.Response(
-#                 description="Activity not found.",
-#                 examples={"application/json": {"detail": "Not found."}}
-#             ),
-#             401: openapi.Response(
-#                 description="Unauthorized access.",
-#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-#             )
-#         }
-#     )
-#     def put(self, request, *args, **kwargs):
-#         """
-#         Update an activity for a specific equipment. Supports partial updates.
-#         """
-#         kwargs['partial'] = True
-#         return super().put(request, *args, **kwargs)
-
-#     @swagger_auto_schema(
-#         tags=['Equipment Activities'],
-#         operation_description="Delete an activity for a specific equipment.",
-#         responses={
-#             204: openapi.Response(description="Activity deleted successfully."),
-#             404: openapi.Response(
-#                 description="Activity not found.",
-#                 examples={"application/json": {"detail": "Not found."}}
-#             ),
-#             401: openapi.Response(
-#                 description="Unauthorized access.",
-#                 examples={"application/json": {"detail": "Authentication credentials were not provided."}}
-#             )
-#         }
-#     )
-#     def delete(self, request, *args, **kwargs):
-#         """
-#         Delete an activity for a specific equipment.
-#         """
-#         return super().delete(request, *args, **kwargs)
