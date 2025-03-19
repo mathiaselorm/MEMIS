@@ -17,6 +17,17 @@ User = get_user_model()
 
 
 
+import logging
+from django.utils.translation import gettext_lazy as _
+from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+from accounts.models import CustomUser
+
+User = CustomUser  # or use get_user_model() if preferred
+logger = logging.getLogger(__name__)
+
+
+
 class UserSerializer(serializers.ModelSerializer):
     """
     Serializer for the User model.
@@ -62,15 +73,11 @@ class UserSerializer(serializers.ModelSerializer):
     def validate_user_role(self, value):
         """
         Validate and map the human-readable role to internal value.
-        Only Admins and SuperAdmins can assign roles.
+        Now, all authenticated users can assign user roles.
         """
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
             raise ValidationError(_("Authentication credentials were not provided."))
-
-        # Ensure the requesting user has permission to assign roles
-        if request.user.user_role not in [User.UserRole.ADMIN, User.UserRole.SUPERADMIN]:
-            raise ValidationError(_("You do not have permission to assign user roles."))
 
         # Map display string to internal value
         for role in User.UserRole:

@@ -506,13 +506,9 @@ class UserListView(ListAPIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def get_queryset(self):
-        user = self.request.user
-        if user.is_superuser or user.user_role == User.UserRole.ADMIN:
-            # Superusers and Admins can see all users except superusers
-            return User.objects.filter(is_superuser=False).order_by('id')
-        else:
-            # Technicians cannot see any users
-            raise PermissionDenied(detail="You do not have permission to view this resource.")
+        # Return all users, or some subset if you prefer
+        return User.objects.all().order_by('id')
+    
         
         
 @swagger_auto_schema(
@@ -544,7 +540,7 @@ class UserListView(ListAPIView):
     tags=["User Management"]
 )
 @api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated, IsAdminOrSuperAdmin])
+@permission_classes([permissions.IsAuthenticated])
 def total_users_view(request):
     """
     Get the total number of users.
