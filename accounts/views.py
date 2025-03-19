@@ -451,7 +451,7 @@ class UserListView(ListAPIView):
     Technicians cannot access this view.
     """
     serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdminOrSuperAdmin]
+    permission_classes = [permissions.IsAuthenticated]
 
     @swagger_auto_schema(
         operation_summary="List Users",
