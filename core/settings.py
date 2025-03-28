@@ -161,7 +161,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'django_filters',
-    'drf_yasg',
+    'drf_spectacular',
     'channels',
     
     #installed apps
@@ -193,6 +193,7 @@ REST_FRAMEWORK = {
         'rest_framework.filters.OrderingFilter',
          'rest_framework.filters.SearchFilter',
     ],
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 SIMPLE_JWT = {
@@ -203,6 +204,12 @@ SIMPLE_JWT = {
     "UPDATE_LAST_LOGIN": False,
 }
 
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'MEMIS API',
+    'DESCRIPTION': 'API Documentation for MEMIS',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+}
 
 DJANGO_REST_PASSWORDRESET_TOKEN_CONFIG = {
     'CLASS': 'django_rest_passwordreset.tokens.RandomStringTokenGenerator',
